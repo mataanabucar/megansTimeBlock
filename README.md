@@ -29,6 +29,14 @@ The app uses a simple SwiftUI + SwiftData structure:
 
 SwiftData persists tasks, schedule blocks, planning preferences, reminder settings, and review entries locally on device.
 
+## Custom Tab Bar Layout
+
+The floating bottom navigation is composed in `AppRootView` with a custom `GentleTabBar` in a dedicated bottom layout slot. That keeps the pill bar visually floating while SwiftUI reserves real space for it, so the bar does not paint over the active screen.
+
+New scrollable screens should use `GentleScrollView` instead of a raw `ScrollView`. It applies the shared page padding and `GentleLayout.scrollBottomReserve`, which lets the final card, row, or action button scroll fully above the floating tab bar. Screens with their own fixed bottom action, like Quick Capture, should use `GentleLayout.fixedBottomActionReserve` for the scroll content and place the action in a `safeAreaInset`.
+
+Avoid adding unrelated one-off bottom padding values to individual screens; update `GentleLayout` when the tab bar dimensions or page rhythm need to change.
+
 ## What Works Now
 
 - Bottom tabs: Home, Inbox, Plan, Review, Settings.
@@ -115,7 +123,7 @@ Use AlarmKit only for must-not-miss reminders after real iPhone testing. Do not 
 
 ## VS Code Validation Notes
 
-This workspace was scaffolded from VS Code. Native Apple build validation could not run in this host because neither `swift` nor `xcodebuild` is available on PATH, and the iOS App Builder plugin's simulator discovery failed with `spawn xcrun ENOENT`.
+This workspace was scaffolded from VS Code. When validating from a shell that points `xcode-select` at Command Line Tools, run Xcode builds with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`.
 
 Completed local checks:
 

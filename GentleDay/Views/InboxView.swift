@@ -2,6 +2,7 @@ import SwiftData
 import SwiftUI
 
 struct InboxView: View {
+    @Environment(\.gentleActiveTab) private var gentleActiveTab
     @Environment(\.modelContext) private var modelContext
     @Query private var tasks: [TaskItem]
     @Query private var preferences: [UserPlanningPreferences]
@@ -15,36 +16,55 @@ struct InboxView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                GentleSectionHeader(
-                    title: "Inbox",
-                    subtitle: "Unsorted life tasks. Nothing here is judging you."
-                )
+        GentleScrollView(spacing: 20) {
+            GentlePageHeader(
+                title: "Inbox",
+                subtitle: "Unscheduled tasks",
+                trailingSystemImage: "slider.horizontal.3",
+                trailingAction: {}
+            )
 
-                if inboxTasks.isEmpty {
-                    GentleEmptyState(
-                        title: "Your inbox is clear",
-                        message: "Capture something whenever it appears. It can stay simple.",
-                        systemImage: "tray"
-                    )
-                } else {
+            if inboxTasks.isEmpty {
+                GentleEmptyState(
+                    title: "Your inbox is clear",
+                    message: "Capture something whenever it appears. It can stay simple.",
+                    systemImage: "tray"
+                )
+            } else {
+                VStack(spacing: 14) {
                     ForEach(inboxTasks) { task in
-                        InboxTaskCard(
-                            task: task,
-                            onEdit: { editingTask = task },
-                            onSchedule: { TaskActionService.scheduleSoon(task, preferences: preferences.first, context: modelContext) },
-                            onDone: { TaskActionService.markTaskDone(task, context: modelContext) },
-                            onShrink: { TaskActionService.shrinkTask(task, context: modelContext) },
-                            onDelete: { taskPendingDelete = task }
+                        TaskRowCard(
+                            title: task.title,
+                            metadata: metadata(for: task),
+                            category: task.category,
+                            detail: task.suggestedTinyStep.nilIfBlank.map { "Tiny step: \($0)" },
+                            actions: [
+                                TaskRowAction(title: "Edit", systemImage: "pencil", action: { editingTask = task }),
+                                TaskRowAction(title: "Schedule", systemImage: "calendar", action: {
+                                    TaskActionService.scheduleSoon(task, preferences: preferences.first, context: modelContext)
+                                }),
+                                TaskRowAction(title: "Done", systemImage: "checkmark", tint: AppColors.success, action: {
+                                    TaskActionService.markTaskDone(task, context: modelContext)
+                                })
+                            ]
                         )
+                        .contextMenu {
+                            Button("Shrink") {
+                                TaskActionService.shrinkTask(task, context: modelContext)
+                            }
+                            Button("Delete", role: .destructive) {
+                                taskPendingDelete = task
+                            }
+                        }
                     }
                 }
             }
-            .padding(20)
         }
         .gentleBackground()
-        .navigationTitle("Inbox")
+        .toolbar(.hidden, for: .navigationBar)
+        .onAppear {
+            gentleActiveTab?.wrappedValue = .inbox
+        }
         .sheet(item: $editingTask) { task in
             NavigationStack {
                 TaskEditView(task: task)
@@ -69,6 +89,32 @@ struct InboxView: View {
         }
     }
 
+    private func metadata(for task: TaskItem) -> String {
+        var values = [
+            task.category.title,
+            "\(task.estimatedMinutes) min"
+        ]
+
+        if let dueDate = task.dueDate {
+            values.append(dueLabel(for: dueDate))
+        }
+
+        return values.joined(separator: "  •  ")
+    }
+
+    private func dueLabel(for date: Date) -> String {
+        if Calendar.current.isDateInToday(date) {
+            return "Due Today"
+        }
+
+        if let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()),
+           Calendar.current.isDate(date, inSameDayAs: tomorrow) {
+            return "Due Tomorrow"
+        }
+
+        return DateFormatting.shortDate.string(from: date)
+    }
+
     private func delete(_ task: TaskItem) {
         modelContext.delete(task)
         try? modelContext.save()
@@ -83,68 +129,5 @@ struct InboxView: View {
                 }
             }
         )
-    }
-}
-
-private struct InboxTaskCard: View {
-    var task: TaskItem
-    var onEdit: () -> Void
-    var onSchedule: () -> Void
-    var onDone: () -> Void
-    var onShrink: () -> Void
-    var onDelete: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                Circle()
-                    .fill(GentleTheme.color(for: task.category))
-                    .frame(width: 14, height: 14)
-                    .padding(.top, 5)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(task.title)
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(GentleTheme.ink)
-                    GentleMetadataRow(items: metadata)
-                }
-
-                Spacer()
-            }
-
-            if !task.suggestedTinyStep.isEmpty {
-                Text("Tiny step: \(task.suggestedTinyStep)")
-                    .font(.subheadline)
-                    .foregroundStyle(GentleTheme.mutedInk)
-            }
-
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 8)], spacing: 8) {
-                Button("Edit", action: onEdit)
-                Button("Schedule", action: onSchedule)
-                Button("Done", action: onDone)
-                Button("Shrink", action: onShrink)
-                Button(role: .destructive, action: onDelete) {
-                    Text("Delete")
-                }
-            }
-            .buttonStyle(.bordered)
-            .tint(GentleTheme.sage)
-        }
-        .gentleCardStyle()
-    }
-
-    private var metadata: [String] {
-        var values = [
-            task.category.title,
-            "\(task.estimatedMinutes) min",
-            task.energyLevel.title,
-            task.status.title
-        ]
-
-        if let dueDate = task.dueDate {
-            values.insert(DateFormatting.shortDate.string(from: dueDate), at: 2)
-        }
-
-        return values
     }
 }

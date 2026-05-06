@@ -1,77 +1,80 @@
 import SwiftData
 import SwiftUI
 
-enum AppTab: String, CaseIterable, Identifiable {
-    case home
-    case inbox
-    case plan
-    case review
-    case settings
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .home: "Home"
-        case .inbox: "Inbox"
-        case .plan: "Plan"
-        case .review: "Review"
-        case .settings: "Settings"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .home: "house.fill"
-        case .inbox: "tray.fill"
-        case .plan: "calendar.badge.clock"
-        case .review: "moon.stars.fill"
-        case .settings: "gearshape.fill"
-        }
-    }
-}
-
 struct AppRootView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var preferences: [UserPlanningPreferences]
     @State private var selectedTab: AppTab = .home
+    @State private var highlightedTab: AppTab = .home
+    @State private var tabResetID = UUID()
 
     var body: some View {
-        TabView(selection: $selectedTab) {
+        ZStack {
+            GentlePageBackground()
+
+            VStack(spacing: 0) {
+                activeTabContent
+                    .environment(\.gentleActiveTab, highlightedTabBinding)
+                    .id("\(selectedTab.rawValue)-\(tabResetID.uuidString)")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                GentleTabBar(selection: tabBarSelection)
+                    .padding(.horizontal, GentleLayout.tabBarHorizontalPadding)
+                    .padding(.bottom, GentleLayout.tabBarBottomPadding)
+            }
+        }
+        .tint(AppColors.lavenderDeep)
+        .preferredColorScheme(.light)
+        .animation(.spring(response: 0.34, dampingFraction: 0.88), value: selectedTab)
+        .task {
+            SeedDataService.ensurePreferences(in: modelContext, existing: preferences)
+        }
+    }
+
+    private var highlightedTabBinding: Binding<AppTab> {
+        Binding(
+            get: { highlightedTab },
+            set: { highlightedTab = $0 }
+        )
+    }
+
+    private var tabBarSelection: Binding<AppTab> {
+        Binding(
+            get: { highlightedTab },
+            set: { tab in
+                highlightedTab = tab
+                if selectedTab == tab {
+                    tabResetID = UUID()
+                } else {
+                    selectedTab = tab
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var activeTabContent: some View {
+        switch selectedTab {
+        case .home:
             NavigationStack {
                 HomeView()
             }
-            .tabItem { Label(AppTab.home.title, systemImage: AppTab.home.systemImage) }
-            .tag(AppTab.home)
-
+        case .inbox:
             NavigationStack {
                 InboxView()
             }
-            .tabItem { Label(AppTab.inbox.title, systemImage: AppTab.inbox.systemImage) }
-            .tag(AppTab.inbox)
-
+        case .plan:
             NavigationStack {
-                BuildPlanView()
+                TodayScheduleView()
             }
-            .tabItem { Label(AppTab.plan.title, systemImage: AppTab.plan.systemImage) }
-            .tag(AppTab.plan)
-
+        case .review:
             NavigationStack {
                 ReviewView()
             }
-            .tabItem { Label(AppTab.review.title, systemImage: AppTab.review.systemImage) }
-            .tag(AppTab.review)
-
+        case .settings:
             NavigationStack {
                 SettingsView()
             }
-            .tabItem { Label(AppTab.settings.title, systemImage: AppTab.settings.systemImage) }
-            .tag(AppTab.settings)
-        }
-        .tint(GentleTheme.sage)
-        .preferredColorScheme(.dark)
-        .task {
-            SeedDataService.ensurePreferences(in: modelContext, existing: preferences)
         }
     }
 }

@@ -43,6 +43,17 @@
 		000000000000000000000061 /* TaskEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000060 /* TaskEditView.swift */; };
 		000000000000000000000063 /* TodayScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000062 /* TodayScheduleView.swift */; };
 		000000000000000000000065 /* GentleComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000064 /* GentleComponents.swift */; };
+		000000000000000000000068 /* DesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000071 /* DesignTokens.swift */; };
+		000000000000000000000069 /* AppColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000072 /* AppColors.swift */; };
+		00000000000000000000006A /* AppTypography.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000073 /* AppTypography.swift */; };
+		00000000000000000000006B /* PrimaryActionTile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000074 /* PrimaryActionTile.swift */; };
+		00000000000000000000006C /* SoftCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000075 /* SoftCard.swift */; };
+		00000000000000000000006D /* PillChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000076 /* PillChip.swift */; };
+		00000000000000000000006E /* GentleTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000077 /* GentleTabBar.swift */; };
+		00000000000000000000006F /* TaskRowCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000078 /* TaskRowCard.swift */; };
+		000000000000000000000070 /* SectionTitleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000079 /* SectionTitleView.swift */; };
+		00000000000000000000007B /* GentleLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000007D /* GentleLayout.swift */; };
+		00000000000000000000007C /* GentleScrollView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000007E /* GentleScrollView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -84,6 +95,17 @@
 		000000000000000000000062 /* TodayScheduleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayScheduleView.swift; sourceTree = "<group>"; };
 		000000000000000000000064 /* GentleComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GentleComponents.swift; sourceTree = "<group>"; };
 		000000000000000000000067 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		000000000000000000000071 /* DesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignTokens.swift; sourceTree = "<group>"; };
+		000000000000000000000072 /* AppColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppColors.swift; sourceTree = "<group>"; };
+		000000000000000000000073 /* AppTypography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTypography.swift; sourceTree = "<group>"; };
+		000000000000000000000074 /* PrimaryActionTile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrimaryActionTile.swift; sourceTree = "<group>"; };
+		000000000000000000000075 /* SoftCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoftCard.swift; sourceTree = "<group>"; };
+		000000000000000000000076 /* PillChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PillChip.swift; sourceTree = "<group>"; };
+		000000000000000000000077 /* GentleTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GentleTabBar.swift; sourceTree = "<group>"; };
+		000000000000000000000078 /* TaskRowCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskRowCard.swift; sourceTree = "<group>"; };
+		000000000000000000000079 /* SectionTitleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SectionTitleView.swift; sourceTree = "<group>"; };
+		00000000000000000000007D /* GentleLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GentleLayout.swift; sourceTree = "<group>"; };
+		00000000000000000000007E /* GentleScrollView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GentleScrollView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -123,6 +145,7 @@
 				000000000000000000000013 /* Notifications */,
 				000000000000000000000014 /* Persistence */,
 				000000000000000000000015 /* Services */,
+				00000000000000000000007A /* Theme */,
 				000000000000000000000016 /* Utilities */,
 				000000000000000000000017 /* ViewModels */,
 				000000000000000000000018 /* Views */,
@@ -225,6 +248,13 @@
 			isa = PBXGroup;
 			children = (
 				000000000000000000000064 /* GentleComponents.swift */,
+				00000000000000000000007E /* GentleScrollView.swift */,
+				000000000000000000000077 /* GentleTabBar.swift */,
+				000000000000000000000076 /* PillChip.swift */,
+				000000000000000000000074 /* PrimaryActionTile.swift */,
+				000000000000000000000079 /* SectionTitleView.swift */,
+				000000000000000000000075 /* SoftCard.swift */,
+				000000000000000000000078 /* TaskRowCard.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -235,6 +265,17 @@
 				00000000000000000000001B /* Assets.xcassets */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		00000000000000000000007A /* Theme */ = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000072 /* AppColors.swift */,
+				000000000000000000000073 /* AppTypography.swift */,
+				000000000000000000000071 /* DesignTokens.swift */,
+				00000000000000000000007D /* GentleLayout.swift */,
+			);
+			path = Theme;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -325,6 +366,10 @@
 				00000000000000000000003F /* TaskActionService.swift in Sources */,
 				000000000000000000000041 /* DateFormatting.swift in Sources */,
 				000000000000000000000043 /* GentleTheme.swift in Sources */,
+				000000000000000000000069 /* AppColors.swift in Sources */,
+				00000000000000000000006A /* AppTypography.swift in Sources */,
+				000000000000000000000068 /* DesignTokens.swift in Sources */,
+				00000000000000000000007B /* GentleLayout.swift in Sources */,
 				000000000000000000000045 /* NotificationNames.swift in Sources */,
 				000000000000000000000047 /* String+GentleDay.swift in Sources */,
 				000000000000000000000049 /* BuildPlanViewModel.swift in Sources */,
@@ -342,6 +387,13 @@
 				000000000000000000000061 /* TaskEditView.swift in Sources */,
 				000000000000000000000063 /* TodayScheduleView.swift in Sources */,
 				000000000000000000000065 /* GentleComponents.swift in Sources */,
+				00000000000000000000007C /* GentleScrollView.swift in Sources */,
+				00000000000000000000006E /* GentleTabBar.swift in Sources */,
+				00000000000000000000006D /* PillChip.swift in Sources */,
+				00000000000000000000006B /* PrimaryActionTile.swift in Sources */,
+				000000000000000000000070 /* SectionTitleView.swift in Sources */,
+				00000000000000000000006C /* SoftCard.swift in Sources */,
+				00000000000000000000006F /* TaskRowCard.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

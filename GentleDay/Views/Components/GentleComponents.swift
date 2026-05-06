@@ -7,26 +7,13 @@ struct GentleActionCard: View {
     var tint: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Image(systemName: systemImage)
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(tint)
-                .frame(width: 44, height: 44)
-                .background(tint.opacity(0.18))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text(title)
-                    .font(.headline)
-                    .foregroundStyle(GentleTheme.ink)
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(GentleTheme.mutedInk)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .gentleCardStyle()
+        PrimaryActionTile(
+            title: title,
+            subtitle: subtitle,
+            systemImage: systemImage,
+            accent: tint,
+            background: tint.opacity(0.13)
+        )
     }
 }
 
@@ -35,17 +22,7 @@ struct GentleSectionHeader: View {
     var subtitle: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(GentleTheme.ink)
-            if let subtitle {
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(GentleTheme.mutedInk)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        SectionTitleView(title: title, subtitle: subtitle)
     }
 }
 
@@ -55,17 +32,7 @@ struct GentlePill: View {
     var isSelected: Bool = false
 
     var body: some View {
-        Text(title)
-            .font(.subheadline.weight(.medium))
-            .foregroundStyle(isSelected ? GentleTheme.onAccent : GentleTheme.ink)
-            .padding(.horizontal, 13)
-            .padding(.vertical, 9)
-            .background(isSelected ? tint : tint.opacity(0.18))
-            .overlay {
-                Capsule()
-                    .stroke(isSelected ? Color.clear : GentleTheme.outline)
-            }
-            .clipShape(Capsule())
+        PillChip(title: title, tint: tint, isSelected: isSelected)
     }
 }
 
@@ -75,20 +42,53 @@ struct GentleEmptyState: View {
     var systemImage: String
 
     var body: some View {
-        VStack(spacing: 14) {
-            Image(systemName: systemImage)
-                .font(.largeTitle)
-                .foregroundStyle(GentleTheme.sage)
-            Text(title)
-                .font(.headline)
-                .foregroundStyle(GentleTheme.ink)
-            Text(message)
-                .font(.subheadline)
-                .foregroundStyle(GentleTheme.mutedInk)
-                .multilineTextAlignment(.center)
+        SoftCard {
+            VStack(spacing: 14) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 32, weight: .regular))
+                    .foregroundStyle(AppColors.lavender)
+                    .frame(width: 54, height: 54)
+                    .background(AppColors.lavenderSoft)
+                    .clipShape(Circle())
+
+                Text(title)
+                    .font(AppTypography.cardTitle)
+                    .foregroundStyle(AppColors.navy)
+                    .multilineTextAlignment(.center)
+
+                Text(message)
+                    .font(AppTypography.callout)
+                    .foregroundStyle(AppColors.mutedText)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+            }
+            .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity)
-        .gentleCardStyle()
+    }
+}
+
+struct GentleLogoMark: View {
+    var size: CGFloat = 42
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(AppColors.butterSoft)
+
+            VStack(spacing: -1) {
+                Image(systemName: "sun.max.fill")
+                    .font(.system(size: size * 0.30, weight: .medium))
+                    .foregroundStyle(AppColors.butter)
+                Image(systemName: "water.waves")
+                    .font(.system(size: size * 0.30, weight: .semibold))
+                    .foregroundStyle(AppColors.sky)
+            }
+        }
+        .frame(width: size, height: size)
+        .overlay {
+            Circle()
+                .stroke(AppColors.card.opacity(0.75), lineWidth: 2)
+        }
     }
 }
 
@@ -99,13 +99,19 @@ struct GentlePrimaryButton: View {
 
     var body: some View {
         Button(action: action) {
-            Label(title, systemImage: systemImage ?? "heart.fill")
-                .font(.headline)
+            HStack(spacing: 9) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                }
+                Text(title)
+            }
+                .font(.system(size: 16, weight: .semibold))
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 15)
-                .background(GentleTheme.sage)
-                .foregroundStyle(GentleTheme.onAccent)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .padding(.vertical, 16)
+                .background(AppColors.primaryGradient)
+                .foregroundStyle(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous))
+                .shadow(color: AppColors.lavender.opacity(0.22), radius: 12, x: 0, y: 8)
         }
         .buttonStyle(.plain)
     }
@@ -115,19 +121,11 @@ struct GentleMetadataRow: View {
     var items: [String]
 
     var body: some View {
-        HStack {
+        HStack(spacing: 7) {
             ForEach(items.filter { !$0.isEmpty }, id: \.self) { item in
                 Text(item)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(GentleTheme.mutedInk)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(GentleTheme.field)
-                    .overlay {
-                        Capsule()
-                            .stroke(GentleTheme.outline)
-                    }
-                    .clipShape(Capsule())
+                    .font(AppTypography.caption)
+                    .foregroundStyle(AppColors.mutedText)
             }
         }
     }

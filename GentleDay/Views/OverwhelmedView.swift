@@ -9,6 +9,8 @@ private struct OverwhelmTinyAction: Identifiable {
 }
 
 struct OverwhelmedView: View {
+    @Environment(\.gentleActiveTab) private var gentleActiveTab
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Query private var tasks: [TaskItem]
     @State private var message = "This is enough for now."
@@ -44,67 +46,107 @@ struct OverwhelmedView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("I'm Overwhelmed")
-                        .font(.largeTitle.weight(.bold))
-                        .foregroundStyle(GentleTheme.ink)
-                    Text("The full list is hidden. Pick one tiny thing, or just reset.")
-                        .font(.body)
-                        .foregroundStyle(GentleTheme.mutedInk)
-                }
+        GentleScrollView(spacing: 22, topPadding: 14) {
+            topBar
 
-                VStack(spacing: 12) {
-                    ForEach(tinyActions) { action in
-                        Button {
+            GentlePageHeader(
+                title: "I'm\nOverwhelmed",
+                subtitle: "Let's make it smaller.\nYou don't have to do it all.",
+                systemImage: "cloud",
+                centered: true
+            )
+            .padding(.bottom, 12)
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Choose one tiny thing")
+                    .font(AppTypography.caption)
+                    .foregroundStyle(AppColors.slate)
+
+                VStack(spacing: 11) {
+                    ForEach(Array(tinyActions.enumerated()), id: \.element.id) { index, action in
+                        TinyActionRow(action: action, index: index) {
                             complete(action)
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(action.title)
-                                        .font(.headline)
-                                    Text("\(action.minutes) min")
-                                        .font(.caption)
-                                        .foregroundStyle(GentleTheme.mutedInk)
-                                }
-                                Spacer()
-                                Image(systemName: "checkmark.circle")
-                                    .font(.title3)
-                            }
-                            .padding(16)
-                            .background(GentleTheme.card)
-                            .foregroundStyle(GentleTheme.ink)
-                            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                         }
-                        .buttonStyle(.plain)
                     }
                 }
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Reset modes")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(GentleTheme.ink)
-                    HStack {
-                        Button("2-minute reset") { message = "Try water, one breath, and one visible surface." }
-                        Button("5-minute reset") { message = "Set a short timer and stop when it rings." }
-                        Button("One tiny task") { message = "Choose the smallest useful step above." }
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(GentleTheme.sage)
-                }
-                .gentleCardStyle()
-
-                Text(message)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(GentleTheme.ink)
-                    .frame(maxWidth: .infinity)
-                    .gentleCardStyle()
             }
-            .padding(20)
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Reset options")
+                    .font(AppTypography.caption)
+                    .foregroundStyle(AppColors.slate)
+
+                HStack(spacing: 9) {
+                    resetButton("2-minute\nreset", background: AppColors.peachSoft) {
+                        message = "Try water, one breath, and one visible surface."
+                    }
+                    resetButton("5-minute\nreset", background: AppColors.lavenderSoft) {
+                        message = "Set a short timer and stop when it rings."
+                    }
+                    resetButton("One tiny\ntask", background: AppColors.sageSoft) {
+                        message = "Choose the smallest useful step above."
+                    }
+                }
+            }
+
+            SoftCard(background: AppColors.blushSoft, stroke: AppColors.blush.opacity(0.16), innerPadding: 16) {
+                HStack(spacing: 12) {
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(AppColors.blush)
+                        .frame(width: 38, height: 38)
+                        .background(AppColors.card.opacity(0.75))
+                        .clipShape(Circle())
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("This is enough for now.")
+                            .font(AppTypography.bodyEmphasis)
+                            .foregroundStyle(AppColors.navy)
+                        Text(message == "This is enough for now." ? "Small steps still move you forward." : message)
+                            .font(AppTypography.caption)
+                            .foregroundStyle(AppColors.mutedText)
+                    }
+
+                    Spacer()
+                }
+            }
         }
         .gentleBackground()
-        .navigationTitle("Overwhelmed")
+        .toolbar(.hidden, for: .navigationBar)
+        .onAppear {
+            gentleActiveTab?.wrappedValue = .plan
+        }
+    }
+
+    private var topBar: some View {
+        HStack {
+            SoftIconButton(systemImage: "chevron.left") {
+                dismiss()
+            }
+            Spacer()
+        }
+    }
+
+    private func resetButton(
+        _ title: String,
+        background: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(AppColors.navy)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 13)
+                .background(background)
+                .clipShape(RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous)
+                        .stroke(AppColors.softBorder.opacity(0.42), lineWidth: 0.7)
+                }
+        }
+        .buttonStyle(.plain)
     }
 
     private func complete(_ action: OverwhelmTinyAction) {
@@ -116,3 +158,65 @@ struct OverwhelmedView: View {
     }
 }
 
+private struct TinyActionRow: View {
+    var action: OverwhelmTinyAction
+    var index: Int
+    var onComplete: () -> Void
+
+    var body: some View {
+        Button(action: onComplete) {
+            HStack(spacing: 13) {
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 38, height: 38)
+                    .background(background)
+                    .clipShape(Circle())
+
+                Text(action.title)
+                    .font(AppTypography.bodyEmphasis)
+                    .foregroundStyle(AppColors.navy)
+                    .lineLimit(1)
+
+                Spacer()
+
+                Text("\(action.minutes) min")
+                    .font(AppTypography.caption)
+                    .foregroundStyle(AppColors.mutedText)
+            }
+            .padding(14)
+            .background(AppColors.card)
+            .clipShape(RoundedRectangle(cornerRadius: DesignTokens.Radius.lg, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.lg, style: .continuous)
+                    .stroke(AppColors.softBorder.opacity(0.55), lineWidth: 0.7)
+            }
+            .shadow(color: DesignTokens.cardShadow.color, radius: 12, x: 0, y: 7)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var icon: String {
+        switch index {
+        case 0: "drop.fill"
+        case 1: "tshirt.fill"
+        default: "takeoutbag.and.cup.and.straw.fill"
+        }
+    }
+
+    private var tint: Color {
+        switch index {
+        case 0: AppColors.sky
+        case 1: AppColors.sky
+        default: AppColors.mint
+        }
+    }
+
+    private var background: Color {
+        switch index {
+        case 0: AppColors.skySoft
+        case 1: AppColors.skySoft
+        default: AppColors.mintSoft
+        }
+    }
+}

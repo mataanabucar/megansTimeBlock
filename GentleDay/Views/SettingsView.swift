@@ -2,6 +2,7 @@ import SwiftData
 import SwiftUI
 
 struct SettingsView: View {
+    @Environment(\.gentleActiveTab) private var gentleActiveTab
     @Environment(\.modelContext) private var modelContext
     @Query private var preferences: [UserPlanningPreferences]
     @Query private var tasks: [TaskItem]
@@ -11,36 +12,36 @@ struct SettingsView: View {
     @State private var wipeMessage: String?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                GentleSectionHeader(
-                    title: "Settings",
-                    subtitle: "Defaults help the planner stay realistic."
-                )
+        GentleScrollView(showsIndicators: true, spacing: 18) {
+            GentlePageHeader(
+                title: "Settings",
+                subtitle: "Defaults help the planner stay realistic."
+            )
 
-                if let preference = preferences.first {
-                    SettingsContent(preferences: preference)
-                } else {
-                    GentleEmptyState(
-                        title: "Preparing settings",
-                        message: "Default preferences will be created automatically.",
-                        systemImage: "gearshape"
-                    )
-                }
-
-                DangerZoneView(
-                    taskCount: tasks.count,
-                    blockCount: blocks.count,
-                    reviewCount: reviews.count,
-                    preferenceCount: preferences.count,
-                    message: wipeMessage,
-                    onWipeTapped: { isShowingWipeOptions = true }
+            if let preference = preferences.first {
+                SettingsContent(preferences: preference)
+            } else {
+                GentleEmptyState(
+                    title: "Preparing settings",
+                    message: "Default preferences will be created automatically.",
+                    systemImage: "gearshape"
                 )
             }
-            .padding(20)
+
+            DangerZoneView(
+                taskCount: tasks.count,
+                blockCount: blocks.count,
+                reviewCount: reviews.count,
+                preferenceCount: preferences.count,
+                message: wipeMessage,
+                onWipeTapped: { isShowingWipeOptions = true }
+            )
         }
         .gentleBackground()
-        .navigationTitle("Settings")
+        .toolbar(.hidden, for: .navigationBar)
+        .onAppear {
+            gentleActiveTab?.wrappedValue = .settings
+        }
         .confirmationDialog(
             "Wipe Gentle Day data?",
             isPresented: $isShowingWipeOptions,
