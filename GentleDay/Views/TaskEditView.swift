@@ -6,6 +6,7 @@ struct TaskEditView: View {
     @Environment(\.modelContext) private var modelContext
     @Bindable var task: TaskItem
     @State private var hasDueDate = false
+    @State private var isShowingDeleteConfirmation = false
 
     var body: some View {
         Form {
@@ -50,6 +51,12 @@ struct TaskEditView: View {
                     Text(option)
                 }
             }
+
+            Section {
+                Button("Delete Task", role: .destructive) {
+                    isShowingDeleteConfirmation = true
+                }
+            }
         }
         .navigationTitle("Edit Task")
         .navigationBarTitleDisplayMode(.inline)
@@ -61,6 +68,20 @@ struct TaskEditView: View {
                     dismiss()
                 }
             }
+        }
+        .confirmationDialog(
+            "Delete this task?",
+            isPresented: $isShowingDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Task", role: .destructive) {
+                modelContext.delete(task)
+                try? modelContext.save()
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This cannot be undone.")
         }
         .onAppear {
             hasDueDate = task.dueDate != nil
@@ -107,4 +128,3 @@ struct TaskEditView: View {
         )
     }
 }
-

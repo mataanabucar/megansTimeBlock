@@ -6,6 +6,7 @@ struct InboxView: View {
     @Query private var tasks: [TaskItem]
     @Query private var preferences: [UserPlanningPreferences]
     @State private var editingTask: TaskItem?
+    @State private var taskPendingDelete: TaskItem?
 
     private var inboxTasks: [TaskItem] {
         tasks
@@ -35,7 +36,7 @@ struct InboxView: View {
                             onSchedule: { TaskActionService.scheduleSoon(task, preferences: preferences.first, context: modelContext) },
                             onDone: { TaskActionService.markTaskDone(task, context: modelContext) },
                             onShrink: { TaskActionService.shrinkTask(task, context: modelContext) },
-                            onDelete: { delete(task) }
+                            onDelete: { taskPendingDelete = task }
                         )
                     }
                 }
@@ -49,11 +50,39 @@ struct InboxView: View {
                 TaskEditView(task: task)
             }
         }
+        .confirmationDialog(
+            "Delete this task?",
+            isPresented: deleteConfirmationBinding,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Task", role: .destructive) {
+                if let taskPendingDelete {
+                    delete(taskPendingDelete)
+                }
+                taskPendingDelete = nil
+            }
+            Button("Cancel", role: .cancel) {
+                taskPendingDelete = nil
+            }
+        } message: {
+            Text("This removes the task from Gentle Day. Scheduled blocks made from it may remain unless you delete them too.")
+        }
     }
 
     private func delete(_ task: TaskItem) {
         modelContext.delete(task)
         try? modelContext.save()
+    }
+
+    private var deleteConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { taskPendingDelete != nil },
+            set: { isPresented in
+                if !isPresented {
+                    taskPendingDelete = nil
+                }
+            }
+        )
     }
 }
 
@@ -119,4 +148,3 @@ private struct InboxTaskCard: View {
         return values
     }
 }
-

@@ -13,6 +13,7 @@ final class TaskItem: Identifiable {
     var estimatedMinutes: Int
     var dueDate: Date?
     var flexibleWindow: String?
+    var preferredDayOfWeek: Int?
     var isRecurring: Bool
     var recurrenceRule: String?
     var statusRawValue: String
@@ -33,6 +34,7 @@ final class TaskItem: Identifiable {
         estimatedMinutes: Int = 15,
         dueDate: Date? = nil,
         flexibleWindow: String? = nil,
+        preferredDayOfWeek: Int? = nil,
         isRecurring: Bool = false,
         recurrenceRule: String? = nil,
         status: TaskStatus = .inbox,
@@ -42,24 +44,40 @@ final class TaskItem: Identifiable {
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
+        let naturalTime = NaturalTimeParser.parse(rawText, now: createdAt)
+        let explicitTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedTitle = if let explicitTitle, !explicitTitle.isEmpty {
+            explicitTitle
+        } else if !naturalTime.cleanedTitle.isEmpty {
+            naturalTime.cleanedTitle
+        } else {
+            Self.makeTitle(from: rawText)
+        }
+        let resolvedEstimatedMinutes = if let parsedMinutes = naturalTime.estimatedMinutes, estimatedMinutes == 15 {
+            parsedMinutes
+        } else {
+            estimatedMinutes
+        }
+
         self.id = id
         self.rawText = rawText
-        self.title = title ?? Self.makeTitle(from: rawText)
+        self.title = String(resolvedTitle.prefix(60))
         self.notes = notes
         self.categoryRawValue = category.rawValue
         self.priorityRawValue = priority.rawValue
         self.energyLevelRawValue = energyLevel.rawValue
-        self.estimatedMinutes = max(1, estimatedMinutes)
-        self.dueDate = dueDate
-        self.flexibleWindow = flexibleWindow
-        self.isRecurring = isRecurring
-        self.recurrenceRule = recurrenceRule
+        self.estimatedMinutes = max(1, resolvedEstimatedMinutes)
+        self.dueDate = dueDate ?? naturalTime.preferredDate
+        self.flexibleWindow = flexibleWindow ?? naturalTime.flexibleWindowLabel
+        self.preferredDayOfWeek = preferredDayOfWeek ?? naturalTime.preferredDayOfWeek
+        self.isRecurring = isRecurring || naturalTime.recurrenceHint != nil
+        self.recurrenceRule = recurrenceRule ?? naturalTime.recurrenceHint
         self.statusRawValue = status.rawValue
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.sourceRawValue = source.rawValue
         self.suggestedTinyStep = suggestedTinyStep ?? Self.makeTinyStep(from: rawText)
-        self.shrinkOptionsRawValue = (shrinkOptions ?? Self.makeShrinkOptions(from: rawText, estimatedMinutes: estimatedMinutes))
+        self.shrinkOptionsRawValue = (shrinkOptions ?? Self.makeShrinkOptions(from: rawText, estimatedMinutes: resolvedEstimatedMinutes))
             .joined(separator: "\n")
     }
 
@@ -167,5 +185,250 @@ final class TaskItem: Identifiable {
             "Set a \(smallMinutes)-minute timer",
             "Prepare what you need, 5 min"
         ]
+    }
+}
+
+struct NaturalTimeHint: Equatable {
+    var cleanedTitle: String
+    var preferredDate: Date?
+    var preferredDayOfWeek: Int?
+    var flexibleWindowLabel: String?
+    var estimatedMinutes: Int?
+    var recurrenceHint: String?
+    var isThisWeek: Bool
+}
+
+struct NaturalTimeParserSampleCase: Identifiable {
+    let id = UUID()
+    var rawText: String
+    var expectedCleanedTitle: String
+    var expectedPreferredDayOfWeek: Int?
+    var expectedWindowLabel: String?
+    var expectedEstimatedMinutes: Int?
+}
+
+enum NaturalTimeParser {
+    static let sampleValidationCases: [NaturalTimeParserSampleCase] = [
+        NaturalTimeParserSampleCase(
+            rawText: "Organize pills in the morning",
+            expectedCleanedTitle: "Organize pills",
+            expectedPreferredDayOfWeek: nil,
+            expectedWindowLabel: "Morning",
+            expectedEstimatedMinutes: nil
+        ),
+        NaturalTimeParserSampleCase(
+            rawText: "Take out the trash on Thursday evening",
+            expectedCleanedTitle: "Take out the trash",
+            expectedPreferredDayOfWeek: 5,
+            expectedWindowLabel: "Evening",
+            expectedEstimatedMinutes: 10
+        ),
+        NaturalTimeParserSampleCase(
+            rawText: "Pay electric bill tomorrow",
+            expectedCleanedTitle: "Pay electric bill",
+            expectedPreferredDayOfWeek: nil,
+            expectedWindowLabel: nil,
+            expectedEstimatedMinutes: nil
+        ),
+        NaturalTimeParserSampleCase(
+            rawText: "Call dentist this week",
+            expectedCleanedTitle: "Call dentist",
+            expectedPreferredDayOfWeek: nil,
+            expectedWindowLabel: nil,
+            expectedEstimatedMinutes: 10
+        ),
+        NaturalTimeParserSampleCase(
+            rawText: "Sunday afternoon",
+            expectedCleanedTitle: "Untitled task",
+            expectedPreferredDayOfWeek: 1,
+            expectedWindowLabel: "Afternoon",
+            expectedEstimatedMinutes: nil
+        )
+    ]
+
+    static func sampleValidationFailures(now: Date = Date()) -> [String] {
+        sampleValidationCases.compactMap { sample in
+            let parsed = parse(sample.rawText, now: now)
+            guard parsed.cleanedTitle != sample.expectedCleanedTitle
+                || parsed.preferredDayOfWeek != sample.expectedPreferredDayOfWeek
+                || parsed.flexibleWindowLabel != sample.expectedWindowLabel
+                || parsed.estimatedMinutes != sample.expectedEstimatedMinutes else {
+                return nil
+            }
+            return "\(sample.rawText) parsed as title=\(parsed.cleanedTitle), weekday=\(String(describing: parsed.preferredDayOfWeek)), window=\(String(describing: parsed.flexibleWindowLabel)), minutes=\(String(describing: parsed.estimatedMinutes))"
+        }
+    }
+
+    static func parse(
+        _ rawText: String,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> NaturalTimeHint {
+        let lowered = rawText.lowercased()
+        let preferredDayOfWeek = weekday(in: lowered)
+        let preferredDate = preferredDate(in: lowered, now: now, calendar: calendar)
+        let flexibleWindowLabel = flexibleWindow(in: lowered)
+        let recurrenceHint = recurrenceHint(in: lowered)
+        let cleanedTitle = cleanTitle(from: rawText)
+        let estimatedMinutes = explicitEstimatedMinutes(in: lowered)
+            ?? inferredEstimatedMinutes(from: cleanedTitle.isEmpty ? rawText : cleanedTitle)
+
+        return NaturalTimeHint(
+            cleanedTitle: cleanedTitle.isEmpty ? "Untitled task" : cleanedTitle,
+            preferredDate: preferredDate,
+            preferredDayOfWeek: preferredDayOfWeek,
+            flexibleWindowLabel: flexibleWindowLabel,
+            estimatedMinutes: estimatedMinutes,
+            recurrenceHint: recurrenceHint,
+            isThisWeek: contains(#"\bthis\s+week\b"#, in: lowered)
+        )
+    }
+
+    static func normalizedWindowLabel(_ label: String?) -> String? {
+        guard let label else { return nil }
+        let normalized = label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch normalized {
+        case "morning", "this morning":
+            return "Morning"
+        case "afternoon":
+            return "Afternoon"
+        case "evening", "evening window", "tonight", "night", "after dinner":
+            return "Evening"
+        case "after work":
+            return "After work"
+        case "before bed", "bedtime":
+            return "Before bed"
+        case "today", "tomorrow", "this week":
+            return nil
+        default:
+            return label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : label
+        }
+    }
+
+    static func weekdayName(for weekday: Int) -> String? {
+        weekdays.first { $0.value == weekday }?.displayName
+    }
+
+    private static let weekdays: [(name: String, displayName: String, value: Int)] = [
+        ("sunday", "Sunday", 1),
+        ("monday", "Monday", 2),
+        ("tuesday", "Tuesday", 3),
+        ("wednesday", "Wednesday", 4),
+        ("thursday", "Thursday", 5),
+        ("friday", "Friday", 6),
+        ("saturday", "Saturday", 7)
+    ]
+
+    private static func weekday(in text: String) -> Int? {
+        weekdays.first { contains(#"\b\#($0.name)\b"#, in: text) }?.value
+    }
+
+    private static func preferredDate(in text: String, now: Date, calendar: Calendar) -> Date? {
+        let today = calendar.startOfDay(for: now)
+        if contains(#"\btomorrow\b"#, in: text) {
+            return calendar.date(byAdding: .day, value: 1, to: today)
+        }
+        if contains(#"\btoday\b"#, in: text)
+            || contains(#"\bthis\s+morning\b"#, in: text)
+            || contains(#"\btonight\b"#, in: text) {
+            return today
+        }
+        return nil
+    }
+
+    private static func flexibleWindow(in text: String) -> String? {
+        if contains(#"\bbefore\s+bed\b|\bbedtime\b"#, in: text) { return "Before bed" }
+        if contains(#"\bafter\s+work\b"#, in: text) { return "After work" }
+        if contains(#"\bafter\s+dinner\b"#, in: text) { return "Evening" }
+        if contains(#"\btonight\b|\bevening\b|\bnight\b"#, in: text) { return "Evening" }
+        if contains(#"\bafternoon\b"#, in: text) { return "Afternoon" }
+        if contains(#"\bmorning\b"#, in: text) { return "Morning" }
+        return nil
+    }
+
+    private static func explicitEstimatedMinutes(in text: String) -> Int? {
+        if let hours = firstInt(from: text, pattern: #"\b(\d+)\s*(?:hours?|hrs?|hr)\b"#) {
+            return max(1, hours * 60)
+        }
+        if let minutes = firstInt(from: text, pattern: #"\b(\d+)\s*(?:minutes?|mins?|min)\b"#) {
+            return max(1, minutes)
+        }
+        return nil
+    }
+
+    private static func inferredEstimatedMinutes(from text: String) -> Int? {
+        let lowered = text.lowercased()
+        if contains(#"\btake\s+out\s+(?:the\s+)?trash\b|\btrash\b"#, in: lowered) { return 10 }
+        if contains(#"\bcall\b|\bphone\b"#, in: lowered) { return 10 }
+        if contains(#"\bquick\b|\bsmall\b"#, in: lowered) { return 5 }
+        return nil
+    }
+
+    private static func recurrenceHint(in text: String) -> String? {
+        if contains(#"\bevery\s+day\b|\bdaily\b"#, in: text) { return "daily" }
+        if contains(#"\bevery\s+week\b|\bweekly\b"#, in: text) { return "weekly" }
+        if let weekday = weekday(in: text), contains(#"\bevery\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b"#, in: text) {
+            return "weekly:\(NaturalTimeParser.weekdayName(for: weekday) ?? "weekday")"
+        }
+        return nil
+    }
+
+    private static func cleanTitle(from rawText: String) -> String {
+        var cleaned = rawText
+        let weekdayList = weekdays.map(\.name).joined(separator: "|")
+        let cleanupPatterns = [
+            #"\bfor\s+\d+\s*(?:minutes?|mins?|min|hours?|hrs?|hr)\b"#,
+            #"\b\d+\s*(?:minutes?|mins?|min|hours?|hrs?|hr)\b"#,
+            #"\bthis\s+week\b"#,
+            #"\btomorrow\b"#,
+            #"\btoday\b"#,
+            #"\btonight\b"#,
+            #"\bevery\s+(?:day|week|morning|night|sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b"#,
+            #"\bdaily\b|\bweekly\b"#,
+            #"\b(?:on\s+)?(?:\#(weekdayList))(?:\s+(?:morning|afternoon|evening|night))?\b"#,
+            #"\b(?:in\s+the\s+|in\s+|during\s+the\s+|during\s+)?(?:this\s+)?(?:morning|afternoon|evening)\b"#,
+            #"\b(?:after\s+work|after\s+dinner|before\s+bed|bedtime)\b"#,
+            #"\bnight\b"#
+        ]
+
+        for pattern in cleanupPatterns {
+            cleaned = cleaned.replacingOccurrences(
+                of: pattern,
+                with: " ",
+                options: [.regularExpression, .caseInsensitive]
+            )
+        }
+
+        cleaned = cleaned.replacingOccurrences(
+            of: #"\b(?:on|in|during|at|by|for)\s*$"#,
+            with: "",
+            options: [.regularExpression, .caseInsensitive]
+        )
+        cleaned = cleaned.replacingOccurrences(
+            of: #"\s{2,}"#,
+            with: " ",
+            options: .regularExpression
+        )
+        cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ".!,;:-")))
+
+        guard !cleaned.isEmpty else { return "" }
+        return cleaned.prefix(1).uppercased() + cleaned.dropFirst()
+    }
+
+    private static func contains(_ pattern: String, in text: String) -> Bool {
+        text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    private static func firstInt(from text: String, pattern: String) -> Int? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
+            return nil
+        }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, range: range),
+              match.numberOfRanges > 1,
+              let swiftRange = Range(match.range(at: 1), in: text) else {
+            return nil
+        }
+        return Int(text[swiftRange])
     }
 }

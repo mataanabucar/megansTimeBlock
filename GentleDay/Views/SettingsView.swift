@@ -4,6 +4,11 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var preferences: [UserPlanningPreferences]
+    @Query private var tasks: [TaskItem]
+    @Query private var blocks: [ScheduleBlock]
+    @Query private var reviews: [ReviewEntry]
+    @State private var isShowingWipeOptions = false
+    @State private var wipeMessage: String?
 
     var body: some View {
         ScrollView {
@@ -22,14 +27,60 @@ struct SettingsView: View {
                         systemImage: "gearshape"
                     )
                 }
+
+                DangerZoneView(
+                    taskCount: tasks.count,
+                    blockCount: blocks.count,
+                    reviewCount: reviews.count,
+                    preferenceCount: preferences.count,
+                    message: wipeMessage,
+                    onWipeTapped: { isShowingWipeOptions = true }
+                )
             }
             .padding(20)
         }
         .gentleBackground()
         .navigationTitle("Settings")
+        .confirmationDialog(
+            "Wipe Gentle Day data?",
+            isPresented: $isShowingWipeOptions,
+            titleVisibility: .visible
+        ) {
+            Button("Wipe Tasks, Schedule, and Reviews", role: .destructive) {
+                wipeContent(keepsPreferences: true)
+            }
+            Button("Wipe Everything", role: .destructive) {
+                wipeContent(keepsPreferences: false)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This cannot be undone. Keeping settings preserves your day rhythm and planning defaults.")
+        }
         .task {
             SeedDataService.ensurePreferences(in: modelContext, existing: preferences)
         }
+    }
+
+    private func wipeContent(keepsPreferences: Bool) {
+        blocks.forEach { block in
+            ReminderService.shared.cancelReminder(for: block)
+            modelContext.delete(block)
+        }
+        tasks.forEach(modelContext.delete)
+        reviews.forEach(modelContext.delete)
+
+        if !keepsPreferences {
+            preferences.forEach(modelContext.delete)
+        }
+
+        try? modelContext.save()
+        if !keepsPreferences {
+            SeedDataService.ensurePreferences(in: modelContext, existing: [])
+        }
+
+        wipeMessage = keepsPreferences
+            ? "Tasks, schedule blocks, and review history were wiped. Settings were kept."
+            : "All app data was wiped. Default settings were recreated."
     }
 }
 
@@ -158,3 +209,51 @@ private struct SettingsContent: View {
     }
 }
 
+private struct DangerZoneView: View {
+    var taskCount: Int
+    var blockCount: Int
+    var reviewCount: Int
+    var preferenceCount: Int
+    var message: String?
+    var onWipeTapped: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(GentleTheme.peach)
+                Text("Data")
+                    .font(.headline)
+                    .foregroundStyle(GentleTheme.ink)
+            }
+
+            Text(summary)
+                .font(.subheadline)
+                .foregroundStyle(GentleTheme.mutedInk)
+
+            Button(role: .destructive, action: onWipeTapped) {
+                Label("Wipe Data", systemImage: "trash.fill")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(GentleTheme.peach)
+
+            if let message {
+                Text(message)
+                    .font(.footnote)
+                    .foregroundStyle(GentleTheme.mutedInk)
+            }
+        }
+        .gentleCardStyle()
+    }
+
+    private var summary: String {
+        [
+            "\(taskCount) tasks",
+            "\(blockCount) scheduled blocks",
+            "\(reviewCount) review entries",
+            "\(preferenceCount) settings profiles"
+        ].joined(separator: " · ")
+    }
+}

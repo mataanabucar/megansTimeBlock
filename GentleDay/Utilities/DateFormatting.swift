@@ -27,7 +27,7 @@ enum DateFormatting {
         case 12..<17:
             return "Afternoon"
         case 17..<21:
-            return "Evening window"
+            return "Evening"
         case 21...23:
             return "Before bed"
         default:
@@ -62,4 +62,3 @@ enum DateFormatting {
         }
     }
 }
-

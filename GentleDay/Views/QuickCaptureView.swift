@@ -21,16 +21,22 @@ struct QuickCaptureView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     TextEditor(text: $viewModel.rawText)
                         .font(.title3)
+                        .foregroundStyle(GentleTheme.ink)
+                        .tint(GentleTheme.sky)
                         .frame(minHeight: 170)
                         .scrollContentBackground(.hidden)
                         .padding(12)
-                        .background(.white.opacity(0.65))
-                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .background(GentleTheme.field)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(viewModel.isListening ? GentleTheme.sky.opacity(0.65) : GentleTheme.outline)
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .overlay(alignment: .topLeading) {
                             if viewModel.rawText.isEmpty {
                                 Text("Type the brain dump here...")
                                     .font(.title3)
-                                    .foregroundStyle(GentleTheme.mutedInk.opacity(0.65))
+                                    .foregroundStyle(GentleTheme.mutedInk.opacity(0.82))
                                     .padding(.horizontal, 18)
                                     .padding(.vertical, 20)
                                     .allowsHitTesting(false)
@@ -47,10 +53,14 @@ struct QuickCaptureView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 13)
                             .background(
-                                viewModel.isListening ? GentleTheme.sage.opacity(0.24) : GentleTheme.sky.opacity(0.24)
+                                viewModel.isListening ? GentleTheme.sage : GentleTheme.sky.opacity(0.22)
                             )
-                            .foregroundStyle(GentleTheme.ink)
-                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .foregroundStyle(viewModel.isListening ? GentleTheme.onAccent : GentleTheme.ink)
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .stroke(viewModel.isListening ? Color.clear : GentleTheme.outline)
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
                     .buttonStyle(.plain)
 

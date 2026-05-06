@@ -100,12 +100,37 @@ app.get("/", (_request, response) => {
       "Gentle Day Voice API is running.",
       "",
       "Health check: GET /health",
-      "Voice dump endpoint: POST /api/voice-dump"
+      "Voice dump endpoint: POST /api/voice-dump",
+      "Text dump endpoint: POST /api/voice-dump-text"
     ].join("\n"));
 });
 
 app.get("/health", (_request, response) => {
   response.json({ ok: true });
+});
+
+app.post("/api/voice-dump-text", async (request, response) => {
+  if (!process.env.OPENAI_API_KEY) {
+    response.status(500).json({ error: "OPENAI_API_KEY is not configured on the server." });
+    return;
+  }
+
+  try {
+    const transcript = cleanText(request.body?.text || request.body?.transcript || "");
+
+    if (!transcript) {
+      response.status(400).json({ error: "Send text in the 'text' field." });
+      return;
+    }
+
+    const parsed = await parseVoiceDump(transcript);
+    response.json(parsed);
+  } catch (error) {
+    console.error(error);
+    response.status(500).json({
+      error: error?.message || "Voice dump parsing failed."
+    });
+  }
 });
 
 app.post("/api/voice-dump", upload.single("audio"), async (request, response) => {

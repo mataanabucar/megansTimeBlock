@@ -12,8 +12,8 @@ struct GentleActionCard: View {
                 .font(.title2.weight(.semibold))
                 .foregroundStyle(tint)
                 .frame(width: 44, height: 44)
-                .background(tint.opacity(0.16))
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .background(tint.opacity(0.18))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(title)
@@ -57,10 +57,14 @@ struct GentlePill: View {
     var body: some View {
         Text(title)
             .font(.subheadline.weight(.medium))
-            .foregroundStyle(isSelected ? .white : GentleTheme.ink)
+            .foregroundStyle(isSelected ? GentleTheme.onAccent : GentleTheme.ink)
             .padding(.horizontal, 13)
             .padding(.vertical, 9)
-            .background(isSelected ? tint : tint.opacity(0.16))
+            .background(isSelected ? tint : tint.opacity(0.18))
+            .overlay {
+                Capsule()
+                    .stroke(isSelected ? Color.clear : GentleTheme.outline)
+            }
             .clipShape(Capsule())
     }
 }
@@ -100,8 +104,8 @@ struct GentlePrimaryButton: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 15)
                 .background(GentleTheme.sage)
-                .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .foregroundStyle(GentleTheme.onAccent)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -118,10 +122,13 @@ struct GentleMetadataRow: View {
                     .foregroundStyle(GentleTheme.mutedInk)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 5)
-                    .background(GentleTheme.background)
+                    .background(GentleTheme.field)
+                    .overlay {
+                        Capsule()
+                            .stroke(GentleTheme.outline)
+                    }
                     .clipShape(Capsule())
             }
         }
     }
 }
-

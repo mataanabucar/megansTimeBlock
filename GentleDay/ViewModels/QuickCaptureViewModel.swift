@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import Observation
+import Speech
 
 struct QuickCaptureChip: Identifiable, Hashable {
     let id: String
@@ -52,9 +53,10 @@ final class QuickCaptureViewModel {
     var isListening = false
     var voiceAutoSaveRequestID: UUID?
 
-    @ObservationIgnored private let voiceRecorder = VoiceDumpRecorder()
+    @ObservationIgnored private let liveSpeechTranscriber = LiveSpeechTranscriber()
     @ObservationIgnored private let voiceDumpService = VoiceDumpAPIService()
     @ObservationIgnored private var textBeforeVoiceCapture = ""
+    @ObservationIgnored private var recognizedVoiceText = ""
     @ObservationIgnored private var parsedVoiceTasks: [ParsedVoiceTask] = []
     @ObservationIgnored private var needsReview: [String] = []
 
@@ -109,8 +111,12 @@ final class QuickCaptureViewModel {
         if !parsedVoiceTasks.isEmpty {
             return parsedVoiceTasks.map { parsedTask in
                 let taskText = parsedTask.title.trimmedForStorage
+                let originalPhrase = parsedTask.originalPhrase.trimmedForStorage
+                let cleanedTitle = NaturalTimeParser.parse(taskText).cleanedTitle
+                let displayTitle = cleanedTitle == "Untitled task" ? taskText : cleanedTitle
                 return TaskItem(
-                    rawText: taskText,
+                    rawText: originalPhrase.isEmpty ? taskText : originalPhrase,
+                    title: displayTitle,
                     category: selectedCategory ?? parsedTask.category,
                     priority: dueDate.map { Calendar.current.isDateInToday($0) ? .important : .normal } ?? .normal,
                     energyLevel: .any,
@@ -146,14 +152,16 @@ final class QuickCaptureViewModel {
         source = .typed
         voiceMessage = nil
         voiceAutoSaveRequestID = nil
+        recognizedVoiceText = ""
         parsedVoiceTasks = []
         needsReview = []
     }
 
     func stopVoiceCapture() {
         guard isListening else { return }
-        voiceRecorder.cancel()
+        liveSpeechTranscriber.cancel()
         isListening = false
+        recognizedVoiceText = ""
         voiceMessage = rawText.trimmedForStorage.isEmpty ? "Stopped listening." : readyMessage()
     }
 
@@ -264,20 +272,33 @@ final class QuickCaptureViewModel {
         let lowercased = text.lowercased()
         if lowercased.contains("5 min") || lowercased.contains("quick") { return 5 }
         if lowercased.contains("hour") { return 60 }
+        if lowercased.contains("trash") { return 10 }
         if lowercased.contains("call") { return 10 }
         return 15
     }
 
     private func startVoiceCapture() async {
         textBeforeVoiceCapture = rawText.trimmedForStorage
+        recognizedVoiceText = ""
         parsedVoiceTasks = []
         needsReview = []
-        voiceMessage = "Preparing microphone..."
+        voiceMessage = "Preparing speech..."
 
         do {
-            try await voiceRecorder.start()
+            try await liveSpeechTranscriber.start(
+                onTranscript: { [weak self] transcript in
+                    guard let self else { return }
+                    self.recognizedVoiceText = transcript.trimmedForStorage
+                    self.updateRawTextWithRecognizedVoiceText()
+                    self.source = .voice
+                    self.voiceMessage = self.recognizedVoiceText.isEmpty ? "Listening..." : "Filling text live..."
+                },
+                onError: { [weak self] error in
+                    self?.voiceMessage = error.localizedDescription
+                }
+            )
             isListening = true
-            voiceMessage = "Recording..."
+            voiceMessage = "Listening... words will appear above."
         } catch {
             isListening = false
             voiceMessage = error.localizedDescription
@@ -289,22 +310,26 @@ final class QuickCaptureViewModel {
         isListening = false
 
         do {
-            let audioURL = try voiceRecorder.stop()
-            voiceMessage = "Transcribing and parsing..."
-
-            defer {
-                try? FileManager.default.removeItem(at: audioURL)
+            let finalTranscript = liveSpeechTranscriber.stop().trimmedForStorage
+            if !finalTranscript.isEmpty {
+                recognizedVoiceText = finalTranscript
+                updateRawTextWithRecognizedVoiceText()
             }
 
-            let response = try await voiceDumpService.parseVoiceDump(
-                audioURL: audioURL,
-                typedText: textBeforeVoiceCapture
-            )
+            let transcript = rawText.trimmedForStorage
+            guard !transcript.isEmpty else {
+                voiceMessage = "No speech was recognized. Check Speech Recognition access in Settings."
+                return
+            }
+
+            voiceMessage = "Parsing tasks..."
+            let response = try await voiceDumpService.parseTextDump(transcript)
 
             rawText = response.transcript
             parsedVoiceTasks = response.tasks
             needsReview = response.needsReview
             source = .voice
+            recognizedVoiceText = ""
 
             if parsedVoiceTasks.isEmpty {
                 voiceMessage = needsReview.isEmpty ? "No tasks found." : "Needs review: \(needsReview.joined(separator: ", "))"
@@ -314,9 +339,15 @@ final class QuickCaptureViewModel {
                 voiceMessage = readyMessage()
             }
         } catch {
-            voiceRecorder.cancel()
+            liveSpeechTranscriber.cancel()
             voiceMessage = error.localizedDescription
         }
+    }
+
+    private func updateRawTextWithRecognizedVoiceText() {
+        rawText = [textBeforeVoiceCapture, recognizedVoiceText]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
     }
 
     private func requestVoiceAutoSave() {
@@ -388,6 +419,178 @@ enum VoiceDumpAPIError: LocalizedError {
             return message
         case .invalidResponse:
             return "The voice API returned an unexpected response."
+        }
+    }
+}
+
+enum LiveSpeechTranscriberError: LocalizedError {
+    case microphoneDenied
+    case speechDenied
+    case speechRestricted
+    case speechUnavailable
+    case audioInputUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .microphoneDenied:
+            return "Microphone access is off for Gentle Day. Enable it in Settings to use Tap to speak."
+        case .speechDenied:
+            return "Speech recognition is off for Gentle Day. Enable it in Settings to use live dictation."
+        case .speechRestricted:
+            return "Speech recognition is restricted on this device."
+        case .speechUnavailable:
+            return "Speech recognition is temporarily unavailable. Try again in a moment."
+        case .audioInputUnavailable:
+            return "The microphone input is unavailable."
+        }
+    }
+}
+
+@MainActor
+final class LiveSpeechTranscriber {
+    private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en_US"))
+    private let audioEngine = AVAudioEngine()
+    private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
+    private var recognitionTask: SFSpeechRecognitionTask?
+    private var currentTranscript = ""
+    private var isActive = false
+    private var onTranscript: ((String) -> Void)?
+    private var onError: ((Error) -> Void)?
+
+    func start(
+        onTranscript: @escaping (String) -> Void,
+        onError: @escaping (Error) -> Void
+    ) async throws {
+        try await requestPermissions()
+        cancel()
+
+        guard let speechRecognizer, speechRecognizer.isAvailable else {
+            throw LiveSpeechTranscriberError.speechUnavailable
+        }
+
+        let request = SFSpeechAudioBufferRecognitionRequest()
+        request.shouldReportPartialResults = true
+        request.addsPunctuation = true
+        request.taskHint = .dictation
+        request.contextualStrings = [
+            "grocery shopping",
+            "dishes",
+            "paint my nails",
+            "sort my meds",
+            "laundry",
+            "appointment",
+            "errands"
+        ]
+
+        let audioSession = AVAudioSession.sharedInstance()
+        try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
+        try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+
+        let inputNode = audioEngine.inputNode
+        let recordingFormat = inputNode.outputFormat(forBus: 0)
+        guard recordingFormat.sampleRate > 0 else {
+            throw LiveSpeechTranscriberError.audioInputUnavailable
+        }
+
+        self.recognitionRequest = request
+        self.currentTranscript = ""
+        self.isActive = true
+        self.onTranscript = onTranscript
+        self.onError = onError
+
+        inputNode.removeTap(onBus: 0)
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak request] buffer, _ in
+            request?.append(buffer)
+        }
+
+        recognitionTask = speechRecognizer.recognitionTask(with: request) { [weak self] result, error in
+            Task { @MainActor in
+                guard let self else { return }
+
+                if let result {
+                    self.currentTranscript = result.bestTranscription.formattedString
+                    self.onTranscript?(self.currentTranscript)
+                }
+
+                if let error, self.isActive {
+                    self.onError?(error)
+                }
+            }
+        }
+
+        audioEngine.prepare()
+        try audioEngine.start()
+    }
+
+    func stop() -> String {
+        guard isActive else { return currentTranscript }
+        isActive = false
+
+        audioEngine.stop()
+        audioEngine.inputNode.removeTap(onBus: 0)
+        recognitionRequest?.endAudio()
+        recognitionTask?.finish()
+        recognitionRequest = nil
+        recognitionTask = nil
+        onTranscript = nil
+        onError = nil
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+
+        return currentTranscript
+    }
+
+    func cancel() {
+        isActive = false
+
+        if audioEngine.isRunning {
+            audioEngine.stop()
+        }
+        audioEngine.inputNode.removeTap(onBus: 0)
+        recognitionRequest?.endAudio()
+        recognitionTask?.cancel()
+        recognitionRequest = nil
+        recognitionTask = nil
+        currentTranscript = ""
+        onTranscript = nil
+        onError = nil
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    private func requestPermissions() async throws {
+        try await requestMicrophonePermission()
+        try await requestSpeechPermission()
+    }
+
+    private func requestMicrophonePermission() async throws {
+        let allowed = await withCheckedContinuation { continuation in
+            AVAudioApplication.requestRecordPermission { allowed in
+                continuation.resume(returning: allowed)
+            }
+        }
+
+        guard allowed else {
+            throw LiveSpeechTranscriberError.microphoneDenied
+        }
+    }
+
+    private func requestSpeechPermission() async throws {
+        let status = await withCheckedContinuation { continuation in
+            SFSpeechRecognizer.requestAuthorization { status in
+                continuation.resume(returning: status)
+            }
+        }
+
+        switch status {
+        case .authorized:
+            return
+        case .denied:
+            throw LiveSpeechTranscriberError.speechDenied
+        case .restricted:
+            throw LiveSpeechTranscriberError.speechRestricted
+        case .notDetermined:
+            throw LiveSpeechTranscriberError.speechDenied
+        @unknown default:
+            throw LiveSpeechTranscriberError.speechUnavailable
         }
     }
 }
@@ -471,6 +674,19 @@ struct VoiceDumpAPIService {
 
     var baseURL: URL = VoiceDumpAPIService.defaultBaseURL
 
+    func parseTextDump(_ text: String) async throws -> VoiceDumpParseResponse {
+        let endpoint = baseURL.appendingPathComponent("api/voice-dump-text")
+        var request = URLRequest(url: endpoint)
+
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 45
+        request.httpBody = try JSONEncoder().encode(VoiceDumpTextRequest(text: text))
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        return try decodeParseResponse(data: data, response: response)
+    }
+
     func parseVoiceDump(audioURL: URL, typedText: String) async throws -> VoiceDumpParseResponse {
         let endpoint = baseURL.appendingPathComponent("api/voice-dump")
         var request = URLRequest(url: endpoint)
@@ -487,6 +703,10 @@ struct VoiceDumpAPIService {
         )
 
         let (data, response) = try await URLSession.shared.upload(for: request, from: body)
+        return try decodeParseResponse(data: data, response: response)
+    }
+
+    private func decodeParseResponse(data: Data, response: URLResponse) throws -> VoiceDumpParseResponse {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw VoiceDumpAPIError.invalidResponse
         }
@@ -512,6 +732,10 @@ struct VoiceDumpAPIService {
         body.appendString("--\(boundary)--\r\n")
         return body
     }
+}
+
+private struct VoiceDumpTextRequest: Encodable {
+    var text: String
 }
 
 private struct VoiceDumpServerError: Decodable {

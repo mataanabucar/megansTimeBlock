@@ -39,6 +39,7 @@ struct AITaskSnapshot: Codable, Identifiable {
     var estimatedMinutes: Int
     var dueDate: Date?
     var flexibleWindow: String?
+    var preferredDayOfWeek: Int?
     var isRecurring: Bool
     var recurrenceRule: String?
     var status: TaskStatus
@@ -104,6 +105,7 @@ extension AITaskSnapshot {
         self.estimatedMinutes = task.estimatedMinutes
         self.dueDate = task.dueDate
         self.flexibleWindow = task.flexibleWindow
+        self.preferredDayOfWeek = task.preferredDayOfWeek
         self.isRecurring = task.isRecurring
         self.recurrenceRule = task.recurrenceRule
         self.status = task.status
@@ -144,4 +146,3 @@ extension AIPlanningPreferencesSnapshot {
         self.enableTimeSensitiveReminders = preferences.enableTimeSensitiveReminders
     }
 }
-

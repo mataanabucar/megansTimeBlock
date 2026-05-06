@@ -22,8 +22,19 @@ npm install
 npm run dev
 ```
 
-By default the iOS simulator reads `GentleDayVoiceAPIBaseURL` from the generated Info.plist
-and calls `http://localhost:8787/api/voice-dump`.
+The app reads `GentleDayVoiceAPIBaseURL` from `GentleDay/Info.plist`.
+For local iPhone testing, it currently points to:
 
-For a physical iPhone, use an HTTPS deployment URL or change `INFOPLIST_KEY_GentleDayVoiceAPIBaseURL`
-in `GentleDay.xcodeproj/project.pbxproj` to a reachable HTTPS backend.
+```sh
+http://Mataans-MacBook-Pro.local:8787
+```
+
+Keep the Mac and iPhone on the same Wi-Fi, leave this server running, and open
+`http://Mataans-MacBook-Pro.local:8787/health` from Safari on the iPhone before testing the app.
+
+Live dictation fills the app text area on-device with Apple Speech. When you stop speaking,
+the app sends that text to `POST /api/voice-dump-text` for OpenAI task parsing. `POST /api/voice-dump`
+is still available as an audio-upload fallback.
+
+For production or testing away from home Wi-Fi, deploy this server behind HTTPS and change
+`GENTLE_DAY_VOICE_API_BASE_URL` in `GentleDay.xcodeproj/project.pbxproj` to that URL.

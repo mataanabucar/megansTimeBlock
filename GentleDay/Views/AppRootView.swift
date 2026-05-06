@@ -69,9 +69,9 @@ struct AppRootView: View {
             .tag(AppTab.settings)
         }
         .tint(GentleTheme.sage)
+        .preferredColorScheme(.dark)
         .task {
             SeedDataService.ensurePreferences(in: modelContext, existing: preferences)
         }
     }
 }
-
