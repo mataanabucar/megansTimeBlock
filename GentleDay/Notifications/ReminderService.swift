@@ -24,11 +24,8 @@ final class ReminderService {
 
     @discardableResult
     func requestAuthorization(enableTimeSensitive: Bool) async throws -> Bool {
-        var options: UNAuthorizationOptions = [.alert, .sound, .badge]
-        if enableTimeSensitive {
-            options.insert(.timeSensitive)
-        }
-        return try await center.requestAuthorization(options: options)
+        _ = enableTimeSensitive
+        return try await center.requestAuthorization(options: [.alert, .sound, .badge])
     }
 
     func registerNotificationCategories() {

@@ -38,19 +38,23 @@ struct QuickCaptureView: View {
                         }
 
                     Button {
-                        viewModel.useVoicePlaceholder()
+                        Task {
+                            await viewModel.toggleVoiceCapture()
+                        }
                     } label: {
-                        Label("Tap to speak", systemImage: "mic.fill")
+                        Label(viewModel.voiceButtonTitle, systemImage: viewModel.voiceButtonSystemImage)
                             .font(.headline)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 13)
-                            .background(GentleTheme.sky.opacity(0.24))
+                            .background(
+                                viewModel.isListening ? GentleTheme.sage.opacity(0.24) : GentleTheme.sky.opacity(0.24)
+                            )
                             .foregroundStyle(GentleTheme.ink)
                             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     }
                     .buttonStyle(.plain)
 
-                    if let message = viewModel.voicePlaceholderMessage {
+                    if let message = viewModel.voiceMessage {
                         Text(message)
                             .font(.footnote)
                             .foregroundStyle(GentleTheme.mutedInk)
@@ -74,7 +78,7 @@ struct QuickCaptureView: View {
                     }
                 }
 
-                GentlePrimaryButton(title: "Save to Inbox", systemImage: "tray.and.arrow.down.fill") {
+                GentlePrimaryButton(title: viewModel.saveButtonTitle, systemImage: "tray.and.arrow.down.fill") {
                     save()
                 }
                 .disabled(!viewModel.canSave)
@@ -85,14 +89,27 @@ struct QuickCaptureView: View {
         .gentleBackground()
         .navigationTitle("Quick Capture")
         .navigationBarTitleDisplayMode(.inline)
+        .onDisappear {
+            viewModel.stopVoiceCapture()
+        }
+        .onChange(of: viewModel.voiceAutoSaveRequestID) { _, requestID in
+            guard requestID != nil else { return }
+            save()
+        }
     }
 
     private func save() {
-        guard let task = viewModel.makeTask() else { return }
-        modelContext.insert(task)
-        try? modelContext.save()
-        viewModel.reset()
-        dismiss()
+        let tasks = viewModel.makeTasks()
+        guard !tasks.isEmpty else { return }
+
+        tasks.forEach(modelContext.insert)
+        do {
+            try modelContext.save()
+            viewModel.reset()
+            dismiss()
+        } catch {
+            viewModel.voiceMessage = error.localizedDescription
+        }
     }
 
     private func tint(for chip: QuickCaptureChip) -> Color {
@@ -112,4 +129,3 @@ struct QuickCaptureView: View {
     }
     .modelContainer(PersistenceController.makeModelContainer())
 }
-

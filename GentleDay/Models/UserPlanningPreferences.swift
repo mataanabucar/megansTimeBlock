@@ -20,11 +20,11 @@ final class UserPlanningPreferences: Identifiable {
 
     init(
         id: UUID = UUID(),
-        wakeTime: Date = Self.time(hour: 7, minute: 30),
-        sleepTime: Date = Self.time(hour: 22, minute: 30),
-        defaultWindowStart: Date = Self.time(hour: 9, minute: 0),
-        defaultWindowEnd: Date = Self.time(hour: 20, minute: 30),
-        eveningStartTime: Date = Self.time(hour: 17, minute: 30),
+        wakeTime: Date = UserPlanningPreferences.time(hour: 7, minute: 30),
+        sleepTime: Date = UserPlanningPreferences.time(hour: 22, minute: 30),
+        defaultWindowStart: Date = UserPlanningPreferences.time(hour: 9, minute: 0),
+        defaultWindowEnd: Date = UserPlanningPreferences.time(hour: 20, minute: 30),
+        eveningStartTime: Date = UserPlanningPreferences.time(hour: 17, minute: 30),
         defaultTaskDuration: Int = 20,
         bufferMinutes: Int = 10,
         defaultReminderStyle: ReminderStyle = .gentle,

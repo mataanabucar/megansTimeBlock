@@ -205,6 +205,7 @@ enum SnoozeOption: Int, Codable, CaseIterable, Identifiable, Hashable {
 
 enum CaptureSource: String, Codable, CaseIterable, Identifiable, Hashable {
     case typed
+    case voice
     case voicePlaceholder
 
     var id: String { rawValue }
