@@ -1,0 +1,115 @@
+import SwiftData
+import SwiftUI
+
+struct QuickCaptureView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @State private var viewModel = QuickCaptureViewModel()
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("What do you need to do?")
+                        .font(.largeTitle.weight(.bold))
+                        .foregroundStyle(GentleTheme.ink)
+                    Text("Messy is fine. Save it first; sort it later.")
+                        .font(.body)
+                        .foregroundStyle(GentleTheme.mutedInk)
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    TextEditor(text: $viewModel.rawText)
+                        .font(.title3)
+                        .frame(minHeight: 170)
+                        .scrollContentBackground(.hidden)
+                        .padding(12)
+                        .background(.white.opacity(0.65))
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .overlay(alignment: .topLeading) {
+                            if viewModel.rawText.isEmpty {
+                                Text("Type the brain dump here...")
+                                    .font(.title3)
+                                    .foregroundStyle(GentleTheme.mutedInk.opacity(0.65))
+                                    .padding(.horizontal, 18)
+                                    .padding(.vertical, 20)
+                                    .allowsHitTesting(false)
+                            }
+                        }
+
+                    Button {
+                        viewModel.useVoicePlaceholder()
+                    } label: {
+                        Label("Tap to speak", systemImage: "mic.fill")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                            .background(GentleTheme.sky.opacity(0.24))
+                            .foregroundStyle(GentleTheme.ink)
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+
+                    if let message = viewModel.voicePlaceholderMessage {
+                        Text(message)
+                            .font(.footnote)
+                            .foregroundStyle(GentleTheme.mutedInk)
+                    }
+                }
+                .gentleCardStyle()
+
+                GentleSectionHeader(title: "Optional chips", subtitle: "Skip these if they slow you down.")
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 10)], spacing: 10) {
+                    ForEach(QuickCaptureChip.defaults) { chip in
+                        Button {
+                            viewModel.toggle(chip)
+                        } label: {
+                            GentlePill(
+                                title: chip.title,
+                                tint: tint(for: chip),
+                                isSelected: viewModel.selectedChips.contains(chip)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                GentlePrimaryButton(title: "Save to Inbox", systemImage: "tray.and.arrow.down.fill") {
+                    save()
+                }
+                .disabled(!viewModel.canSave)
+                .opacity(viewModel.canSave ? 1 : 0.45)
+            }
+            .padding(20)
+        }
+        .gentleBackground()
+        .navigationTitle("Quick Capture")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func save() {
+        guard let task = viewModel.makeTask() else { return }
+        modelContext.insert(task)
+        try? modelContext.save()
+        viewModel.reset()
+        dismiss()
+    }
+
+    private func tint(for chip: QuickCaptureChip) -> Color {
+        if let category = chip.category {
+            return GentleTheme.color(for: category)
+        }
+        if chip.minutes != nil {
+            return GentleTheme.butter
+        }
+        return GentleTheme.sage
+    }
+}
+
+#Preview {
+    NavigationStack {
+        QuickCaptureView()
+    }
+    .modelContainer(PersistenceController.makeModelContainer())
+}
+
