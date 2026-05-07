@@ -11,14 +11,14 @@ enum TaskActionService {
 
     static func scheduleSoon(_ task: TaskItem, preferences: UserPlanningPreferences?, context: ModelContext) {
         let minutes = task.estimatedMinutes > 0 ? task.estimatedMinutes : preferences?.defaultTaskDuration ?? 15
-        let start = Calendar.current.date(byAdding: .minute, value: 10, to: Date()) ?? Date()
+        let start = suggestedStart(for: task, preferences: preferences)
         let end = Calendar.current.date(byAdding: .minute, value: minutes, to: start) ?? start
         let block = ScheduleBlock(
             taskId: task.id,
             title: task.title,
             startTime: start,
             endTime: end,
-            flexibleWindowLabel: task.flexibleWindow ?? DateFormatting.flexibleWindowLabel(for: start),
+            flexibleWindowLabel: task.preferredWindow?.title ?? task.flexibleWindow ?? DateFormatting.flexibleWindowLabel(for: start),
             category: task.category,
             reminderStyle: preferences?.defaultReminderStyle ?? .gentle,
             aiReason: "Scheduled from the inbox as a small next block."
@@ -128,5 +128,62 @@ enum TaskActionService {
         }
         return nil
     }
-}
 
+    private static func suggestedStart(for task: TaskItem, preferences: UserPlanningPreferences?) -> Date {
+        let calendar = Calendar.current
+        let now = Date()
+        let targetDay = targetDay(for: task, now: now, calendar: calendar)
+        let dayStart = calendar.startOfDay(for: targetDay)
+        let defaultStart = preferences.map { DateFormatting.combine(day: dayStart, time: $0.defaultWindowStart) }
+            ?? clock(hour: 9, minute: 0, on: dayStart, calendar: calendar)
+        let eveningStart = preferences.map { DateFormatting.combine(day: dayStart, time: $0.eveningStartTime) }
+            ?? clock(hour: 18, minute: 30, on: dayStart, calendar: calendar)
+        let sleepTime = preferences.map { DateFormatting.combine(day: dayStart, time: $0.sleepTime) }
+            ?? clock(hour: 22, minute: 30, on: dayStart, calendar: calendar)
+
+        let preferred = switch task.preferredWindow {
+        case .morning?:
+            clock(hour: 9, minute: 0, on: dayStart, calendar: calendar)
+        case .midday?:
+            clock(hour: 12, minute: 0, on: dayStart, calendar: calendar)
+        case .afternoon?:
+            clock(hour: 14, minute: 0, on: dayStart, calendar: calendar)
+        case .afterWork?:
+            max(eveningStart, clock(hour: 17, minute: 30, on: dayStart, calendar: calendar))
+        case .evening?:
+            max(eveningStart, clock(hour: 18, minute: 30, on: dayStart, calendar: calendar))
+        case .beforeBed?:
+            calendar.date(byAdding: .minute, value: -60, to: sleepTime) ?? sleepTime
+        case .anytime?, nil:
+            defaultStart
+        }
+
+        if calendar.isDateInToday(dayStart) {
+            let tenMinutesFromNow = calendar.date(byAdding: .minute, value: 10, to: now) ?? now
+            return max(preferred, tenMinutesFromNow)
+        }
+        return preferred
+    }
+
+    private static func targetDay(for task: TaskItem, now: Date, calendar: Calendar) -> Date {
+        if let dueDate = task.dueDate, task.mustRespectDate {
+            return dueDate
+        }
+
+        if let dueDate = task.dueDate {
+            return dueDate
+        }
+
+        if let preferredWeekday = task.preferredWeekday {
+            let todayWeekday = calendar.component(.weekday, from: now)
+            let delta = (preferredWeekday.calendarWeekday - todayWeekday + 7) % 7
+            return calendar.date(byAdding: .day, value: delta, to: now) ?? now
+        }
+
+        return now
+    }
+
+    private static func clock(hour: Int, minute: Int, on day: Date, calendar: Calendar) -> Date {
+        calendar.date(bySettingHour: hour, minute: minute, second: 0, of: day) ?? day
+    }
+}

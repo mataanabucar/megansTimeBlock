@@ -73,8 +73,8 @@ final class NextActionViewModel {
             if Calendar.current.isDateInToday(dueDate) { value += 30 }
             else if dueDate < Date() { value += 20 }
         }
-        if task.priority == .essential { value += 25 }
-        if task.priority == .important { value += 15 }
+        if task.priority == .mustDo { value += 25 }
+        if task.priority == .high { value += 15 }
         return value
     }
 

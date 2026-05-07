@@ -95,7 +95,9 @@ struct InboxView: View {
             "\(task.estimatedMinutes) min"
         ]
 
-        if let dueDate = task.dueDate {
+        if let timingSummary = task.timingSummary?.nilIfBlank {
+            values.append(timingSummary)
+        } else if let dueDate = task.dueDate {
             values.append(dueLabel(for: dueDate))
         }
 

@@ -54,6 +54,14 @@
 		000000000000000000000070 /* SectionTitleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000079 /* SectionTitleView.swift */; };
 		00000000000000000000007B /* GentleLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000007D /* GentleLayout.swift */; };
 		00000000000000000000007C /* GentleScrollView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000007E /* GentleScrollView.swift */; };
+		000000000000000000000080 /* AIParsingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000081 /* AIParsingModels.swift */; };
+		000000000000000000000082 /* AIParsingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000083 /* AIParsingService.swift */; };
+		000000000000000000000084 /* MockAIParsingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000085 /* MockAIParsingService.swift */; };
+		000000000000000000000086 /* OpenAIProxyParsingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000087 /* OpenAIProxyParsingService.swift */; };
+		000000000000000000000088 /* GentlePlannerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000089 /* GentlePlannerService.swift */; };
+		00000000000000000000008A /* AIParsePreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000008B /* AIParsePreviewView.swift */; };
+		00000000000000000000008C /* AISettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000008D /* AISettingsView.swift */; };
+		00000000000000000000008E /* TaskCaptureSplitter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000008F /* TaskCaptureSplitter.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -106,6 +114,14 @@
 		000000000000000000000079 /* SectionTitleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SectionTitleView.swift; sourceTree = "<group>"; };
 		00000000000000000000007D /* GentleLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GentleLayout.swift; sourceTree = "<group>"; };
 		00000000000000000000007E /* GentleScrollView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GentleScrollView.swift; sourceTree = "<group>"; };
+		000000000000000000000081 /* AIParsingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIParsingModels.swift; sourceTree = "<group>"; };
+		000000000000000000000083 /* AIParsingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIParsingService.swift; sourceTree = "<group>"; };
+		000000000000000000000085 /* MockAIParsingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockAIParsingService.swift; sourceTree = "<group>"; };
+		000000000000000000000087 /* OpenAIProxyParsingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIProxyParsingService.swift; sourceTree = "<group>"; };
+		000000000000000000000089 /* GentlePlannerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GentlePlannerService.swift; sourceTree = "<group>"; };
+		00000000000000000000008B /* AIParsePreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIParsePreviewView.swift; sourceTree = "<group>"; };
+		00000000000000000000008D /* AISettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AISettingsView.swift; sourceTree = "<group>"; };
+		00000000000000000000008F /* TaskCaptureSplitter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskCaptureSplitter.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -158,7 +174,11 @@
 			isa = PBXGroup;
 			children = (
 				000000000000000000000022 /* AIPlanModels.swift */,
+				000000000000000000000081 /* AIParsingModels.swift */,
+				000000000000000000000083 /* AIParsingService.swift */,
+				000000000000000000000085 /* MockAIParsingService.swift */,
 				000000000000000000000024 /* OpenAIScheduleService.swift */,
+				000000000000000000000087 /* OpenAIProxyParsingService.swift */,
 			);
 			path = AI;
 			sourceTree = "<group>";
@@ -198,6 +218,7 @@
 			isa = PBXGroup;
 			children = (
 				00000000000000000000003A /* AIScheduleService.swift */,
+				000000000000000000000089 /* GentlePlannerService.swift */,
 				00000000000000000000003C /* MockAIScheduleService.swift */,
 				00000000000000000000003E /* TaskActionService.swift */,
 			);
@@ -211,6 +232,7 @@
 				000000000000000000000042 /* GentleTheme.swift */,
 				000000000000000000000044 /* NotificationNames.swift */,
 				000000000000000000000046 /* String+GentleDay.swift */,
+				00000000000000000000008F /* TaskCaptureSplitter.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -229,6 +251,8 @@
 			isa = PBXGroup;
 			children = (
 				000000000000000000000019 /* Components */,
+				00000000000000000000008B /* AIParsePreviewView.swift */,
+				00000000000000000000008D /* AISettingsView.swift */,
 				00000000000000000000004E /* AppRootView.swift */,
 				000000000000000000000050 /* BuildPlanView.swift */,
 				000000000000000000000052 /* HomeView.swift */,
@@ -350,7 +374,11 @@
 			files = (
 				000000000000000000000021 /* GentleDayApp.swift in Sources */,
 				000000000000000000000023 /* AIPlanModels.swift in Sources */,
+				000000000000000000000080 /* AIParsingModels.swift in Sources */,
+				000000000000000000000082 /* AIParsingService.swift in Sources */,
+				000000000000000000000084 /* MockAIParsingService.swift in Sources */,
 				000000000000000000000025 /* OpenAIScheduleService.swift in Sources */,
+				000000000000000000000086 /* OpenAIProxyParsingService.swift in Sources */,
 				000000000000000000000027 /* GentleEnums.swift in Sources */,
 				000000000000000000000029 /* ReviewEntry.swift in Sources */,
 				00000000000000000000002B /* ScheduleBlock.swift in Sources */,
@@ -362,6 +390,7 @@
 				000000000000000000000037 /* PersistenceController.swift in Sources */,
 				000000000000000000000039 /* SeedDataService.swift in Sources */,
 				00000000000000000000003B /* AIScheduleService.swift in Sources */,
+				000000000000000000000088 /* GentlePlannerService.swift in Sources */,
 				00000000000000000000003D /* MockAIScheduleService.swift in Sources */,
 				00000000000000000000003F /* TaskActionService.swift in Sources */,
 				000000000000000000000041 /* DateFormatting.swift in Sources */,
@@ -381,6 +410,9 @@
 				000000000000000000000055 /* InboxView.swift in Sources */,
 				000000000000000000000057 /* NextActionView.swift in Sources */,
 				000000000000000000000059 /* OverwhelmedView.swift in Sources */,
+				00000000000000000000008A /* AIParsePreviewView.swift in Sources */,
+				00000000000000000000008C /* AISettingsView.swift in Sources */,
+				00000000000000000000008E /* TaskCaptureSplitter.swift in Sources */,
 				00000000000000000000005B /* QuickCaptureView.swift in Sources */,
 				00000000000000000000005D /* ReviewView.swift in Sources */,
 				00000000000000000000005F /* SettingsView.swift in Sources */,

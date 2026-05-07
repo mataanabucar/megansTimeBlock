@@ -15,6 +15,12 @@ final class UserPlanningPreferences: Identifiable {
     var snoozeOptionsRawValue: String
     var enableTimeSensitiveReminders: Bool
     var customGentleSoundName: String?
+    var aiProxyEndpointURL: String = ""
+    var enableAIParsing: Bool = true
+    var aiModeRawValue: String = AIParsingMode.openAIProxy.rawValue
+    var useMockAIService: Bool = false
+    var defaultPlanningStyleRawValue: String = PlanningStyle.balancedDay.rawValue
+    var defaultScheduleRangeRawValue: String = ScheduleRange.today.rawValue
     var createdAt: Date
     var updatedAt: Date
 
@@ -31,6 +37,12 @@ final class UserPlanningPreferences: Identifiable {
         snoozeOptions: [Int] = [5, 15, 30],
         enableTimeSensitiveReminders: Bool = false,
         customGentleSoundName: String? = nil,
+        aiProxyEndpointURL: String = "",
+        enableAIParsing: Bool = true,
+        aiMode: AIParsingMode = .openAIProxy,
+        useMockAIService: Bool? = nil,
+        defaultPlanningStyle: PlanningStyle = .balancedDay,
+        defaultScheduleRange: ScheduleRange = .today,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -46,6 +58,12 @@ final class UserPlanningPreferences: Identifiable {
         self.snoozeOptionsRawValue = snoozeOptions.map(String.init).joined(separator: ",")
         self.enableTimeSensitiveReminders = enableTimeSensitiveReminders
         self.customGentleSoundName = customGentleSoundName
+        self.aiProxyEndpointURL = aiProxyEndpointURL
+        self.enableAIParsing = enableAIParsing
+        self.aiModeRawValue = aiMode.rawValue
+        self.useMockAIService = useMockAIService ?? (aiMode == .mockAI)
+        self.defaultPlanningStyleRawValue = defaultPlanningStyle.rawValue
+        self.defaultScheduleRangeRawValue = defaultScheduleRange.rawValue
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -66,6 +84,33 @@ final class UserPlanningPreferences: Identifiable {
         }
         set {
             snoozeOptionsRawValue = newValue.sorted().map(String.init).joined(separator: ",")
+            touch()
+        }
+    }
+
+    var defaultPlanningStyle: PlanningStyle {
+        get { PlanningStyle(rawValue: defaultPlanningStyleRawValue) ?? .balancedDay }
+        set {
+            defaultPlanningStyleRawValue = newValue.rawValue
+            touch()
+        }
+    }
+
+    var defaultScheduleRange: ScheduleRange {
+        get { ScheduleRange(rawValue: defaultScheduleRangeRawValue) ?? .today }
+        set {
+            defaultScheduleRangeRawValue = newValue.rawValue
+            touch()
+        }
+    }
+
+    var aiMode: AIParsingMode {
+        get {
+            AIParsingMode(rawValue: aiModeRawValue) ?? (useMockAIService ? .mockAI : .openAIProxy)
+        }
+        set {
+            aiModeRawValue = newValue.rawValue
+            useMockAIService = newValue == .mockAI
             touch()
         }
     }

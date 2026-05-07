@@ -54,13 +54,14 @@ enum AppColors {
         case .home: sage
         case .errand: peach
         case .family: blush
-        case .money, .bills: success
+        case .health: mint
+        case .money: success
         case .appointment: lavender
+        case .meal: butter
         case .cleaning: sky
-        case .wellness: mint
-        case .meals: butter
-        case .routine: lavender
-        case .lifeAdmin: sky
+        case .personal: sky
+        case .reminder: lavender
+        case .habit: lavender
         case .other: faintText
         }
     }
@@ -70,13 +71,14 @@ enum AppColors {
         case .home: sageSoft
         case .errand: peachSoft
         case .family: blushSoft
-        case .money, .bills: sageSoft
+        case .health: mintSoft
+        case .money: sageSoft
         case .appointment: lavenderSoft
+        case .meal: butterSoft
         case .cleaning: skySoft
-        case .wellness: mintSoft
-        case .meals: butterSoft
-        case .routine: lavenderMist
-        case .lifeAdmin: skySoft
+        case .personal: skySoft
+        case .reminder: lavenderSoft
+        case .habit: lavenderMist
         case .other: cardLift
         }
     }

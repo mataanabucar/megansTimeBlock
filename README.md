@@ -24,7 +24,7 @@ The app uses a simple SwiftUI + SwiftData structure:
 - `GentleDay/Services`: planner protocol, mock planner, and task action helpers.
 - `GentleDay/Persistence`: SwiftData container and default preference setup.
 - `GentleDay/Notifications`: local notification manager, actions, app delegate bridge, and AlarmKit placeholder.
-- `GentleDay/AI`: Codable AI request/response structs and an unimplemented OpenAI adapter placeholder.
+- `GentleDay/AI`: Codable AI request/response structs, the proxy-safe AI service abstraction, mock AI fallback, and the Structured Outputs schema notes.
 - `GentleDay/Utilities`: formatting, colors, notification names, and string helpers.
 
 SwiftData persists tasks, schedule blocks, planning preferences, reminder settings, and review entries locally on device.
@@ -41,25 +41,85 @@ Avoid adding unrelated one-off bottom padding values to individual screens; upda
 
 - Bottom tabs: Home, Inbox, Plan, Review, Settings.
 - Quick Capture saves raw text into the inbox with optional chips.
+- Quick Capture can also use `Organize with AI`, preview structured task parsing, and still fall back to raw save if parsing fails.
 - Captured items persist locally through SwiftData.
 - Inbox shows unscheduled/open items with edit, schedule, done, shrink, and delete actions.
-- Build My Day generates a local mock plan from inbox tasks and preferences.
+- Build My Day generates a plan through the shared planner service, with a mock AI fallback available offline.
 - Minimum Day is capped and conservative.
 - Today Schedule supports done, snooze, shrink, move later, tomorrow, and skip without guilt.
 - What Should I Do Next shows one recommendation.
 - I'm Overwhelmed hides the full list and shows only three tiny actions.
-- Settings includes planning windows, buffers, reminder defaults, snooze options, Time Sensitive toggle, Siri guidance, and AlarmKit notes.
+- Settings includes planning windows, buffers, reminder defaults, snooze options, Time Sensitive toggle, AI proxy/mock settings, Siri guidance, and AlarmKit notes.
 - Local notification categories and actions are registered for block reminders.
+
+## AI Parsing Setup
+
+Gentle Day uses a secure proxy architecture for real AI parsing:
+
+`iOS app -> hosted AI proxy endpoint -> OpenAI API -> structured JSON response -> app import`
+
+The iOS app should never call OpenAI directly. Do not put an OpenAI API key in Swift files, `Info.plist`, assets, build settings, or the app bundle. Keep `OPENAI_API_KEY` only on the hosted proxy/backend.
+
+Gentle Day supports two AI modes in Settings:
+
+- `Mock AI`: local fake parsing for testing. It works offline and does not need internet or a backend.
+- `OpenAI via Proxy`: real AI parsing through your hosted backend endpoint. This is the recommended real mode for normal personal use.
+
+To use OpenAI via Proxy:
+
+1. Open Gentle Day Settings.
+2. Turn on `Enable AI parsing`.
+3. Set `AI mode` to `OpenAI via Proxy`.
+4. Paste your hosted proxy endpoint in `AI Proxy Endpoint URL`.
+5. Test `Organize with AI` from Quick Capture.
+
+Example development endpoint:
+
+```text
+http://<mac-wifi-ip>:8787/parse-task
+```
+
+Example production endpoint:
+
+```text
+https://your-domain.com/parse-task
+```
+
+The local Mac proxy is optional and only for development. It requires your Mac to stay awake, the server to keep running, and the iPhone to be on the same network. A hosted HTTPS proxy removes that dependency and lets the app work anywhere the iPhone has internet.
+
+The parse request sends structured JSON with the raw capture text plus planning context: `rawText`, `currentDate`, `timezone`, `locale`, wake/sleep defaults, planning style/day, default reminder behavior, default task duration, and existing task/schedule context when available. The existing nested `context` object is still included so the local development proxy remains compatible.
+
+The proxy response can use the app's strict schema from `GentleDay/AI/AIJSONSchema.md`, or a hosted-friendly task shape with fields such as `title`, `notes`, `dueDate`, `startDate`, `startTime`, `durationMinutes`, `priority`, `category`, `reminderPreference`, `recurrence`, `confidence`, and `clarificationNeeded`. The app normalizes successful responses into the normal AI preview/import flow. If parsing fails, the original text remains in Quick Capture so you can retry or save manually.
+
+Quick Capture flow:
+
+1. Enter raw task text.
+2. Tap `Organize with AI`.
+3. Review the structured preview.
+4. Choose `Save to Inbox`, `Edit First`, or `Use Raw Text Instead`.
+
+The planner validates returned schedule blocks before saving them locally. If a proxy or mock response tries to put a Thursday evening task into a morning slot, the app carries it forward and shows a friendly warning instead of saving the bad block.
+
+## Development Proxy
+
+Use the optional example in [ServerProxyExample/README.md](/Users/mataanabucar/Desktop/timeblock/megansTimeBlock/ServerProxyExample/README.md) when testing locally.
+
+Local testing flow:
+
+1. Start the proxy with `OPENAI_API_KEY` set server-side.
+2. In Gentle Day Settings, choose `OpenAI via Proxy`.
+3. Add a proxy URL such as `http://<mac-wifi-ip>:8787/parse-task`.
+4. Leave `Enable AI parsing` on.
+5. Test `Organize with AI` from Quick Capture.
 
 ## What Is Mocked
 
-- AI scheduling is local and deterministic through `MockAIScheduleService`.
-- `OpenAIScheduleService` is a placeholder and intentionally throws `notImplemented`.
+- `MockAIParsingService` provides local deterministic parsing and schedule building when you are offline or not ready to run a proxy yet.
 - Voice capture is a UI placeholder only.
 - Notification action handling posts an in-process event; deeper SwiftData updates from background actions should be finished and tested in Xcode.
 - AlarmKit is a future adapter path only.
 
-No API keys or network calls are included.
+The app still contains no API keys.
 
 ## Notification Behavior
 
@@ -106,6 +166,18 @@ Use AlarmKit only for must-not-miss reminders after real iPhone testing. Do not 
 7. Build on an iOS Simulator first.
 8. Run on a real iPhone for notification behavior.
 
+## AI Test Inputs
+
+Use these in Quick Capture when testing mock mode or proxy mode:
+
+1. `Take out the trash on Thursday evening`
+2. `Organize pills in the morning`
+3. `Pay electric bill tomorrow`
+4. `Call dentist this week`
+5. `Clean the kitchen tonight but only do 10 minutes`
+6. `Every Sunday afternoon meal prep`
+7. `Remind me to put the bins out every Thursday night`
+
 ## Xcode Finishing Checklist
 
 - Open project in Xcode.
@@ -116,6 +188,8 @@ Use AlarmKit only for must-not-miss reminders after real iPhone testing. Do not 
 - Test Quick Capture persistence after app restart.
 - Test local notification permission on real iPhone.
 - Test reminder scheduling, snooze, move later, and skip actions.
+- Test `Organize with AI` in mock mode first, then proxy mode.
+- Confirm Thursday/evening tasks are not pulled into the wrong day or morning window.
 - Enable Time Sensitive notifications only if supported and appropriate.
 - Test Siri Announce Notifications manually in iOS Settings.
 - Add AlarmKit only if using a supported Xcode/iOS target.

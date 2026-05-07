@@ -14,6 +14,7 @@ final class TaskItem: Identifiable {
     var dueDate: Date?
     var flexibleWindow: String?
     var preferredDayOfWeek: Int?
+    var preferredWindowRawValue: String?
     var isRecurring: Bool
     var recurrenceRule: String?
     var statusRawValue: String
@@ -22,6 +23,14 @@ final class TaskItem: Identifiable {
     var sourceRawValue: String
     var suggestedTinyStep: String
     var shrinkOptionsRawValue: String
+    var aiConfidence: Double = 0
+    var aiFriendlyNote: String?
+    var canScheduleToday: Bool = true
+    var canScheduleThisWeek: Bool = true
+    var mustRespectDate: Bool = false
+    var mustRespectDay: Bool = false
+    var mustRespectWindow: Bool = false
+    var allowFlexiblePlacement: Bool = true
 
     init(
         id: UUID = UUID(),
@@ -35,12 +44,21 @@ final class TaskItem: Identifiable {
         dueDate: Date? = nil,
         flexibleWindow: String? = nil,
         preferredDayOfWeek: Int? = nil,
+        preferredWindow: FlexibleWindow? = nil,
         isRecurring: Bool = false,
         recurrenceRule: String? = nil,
         status: TaskStatus = .inbox,
         source: CaptureSource = .typed,
         suggestedTinyStep: String? = nil,
         shrinkOptions: [String]? = nil,
+        aiConfidence: Double = 0,
+        aiFriendlyNote: String? = nil,
+        canScheduleToday: Bool? = nil,
+        canScheduleThisWeek: Bool? = nil,
+        mustRespectDate: Bool? = nil,
+        mustRespectDay: Bool? = nil,
+        mustRespectWindow: Bool? = nil,
+        allowFlexiblePlacement: Bool? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -68,8 +86,10 @@ final class TaskItem: Identifiable {
         self.energyLevelRawValue = energyLevel.rawValue
         self.estimatedMinutes = max(1, resolvedEstimatedMinutes)
         self.dueDate = dueDate ?? naturalTime.preferredDate
-        self.flexibleWindow = flexibleWindow ?? naturalTime.flexibleWindowLabel
-        self.preferredDayOfWeek = preferredDayOfWeek ?? naturalTime.preferredDayOfWeek
+        let resolvedWindow = preferredWindow ?? naturalTime.preferredWindow
+        self.flexibleWindow = flexibleWindow ?? resolvedWindow?.title ?? naturalTime.flexibleWindowLabel
+        self.preferredDayOfWeek = preferredDayOfWeek ?? naturalTime.preferredDayOfWeek?.calendarWeekday
+        self.preferredWindowRawValue = resolvedWindow?.rawValue
         self.isRecurring = isRecurring || naturalTime.recurrenceHint != nil
         self.recurrenceRule = recurrenceRule ?? naturalTime.recurrenceHint
         self.statusRawValue = status.rawValue
@@ -79,10 +99,18 @@ final class TaskItem: Identifiable {
         self.suggestedTinyStep = suggestedTinyStep ?? Self.makeTinyStep(from: rawText)
         self.shrinkOptionsRawValue = (shrinkOptions ?? Self.makeShrinkOptions(from: rawText, estimatedMinutes: resolvedEstimatedMinutes))
             .joined(separator: "\n")
+        self.aiConfidence = min(max(aiConfidence, 0), 1)
+        self.aiFriendlyNote = aiFriendlyNote
+        self.canScheduleToday = canScheduleToday ?? naturalTime.canScheduleToday
+        self.canScheduleThisWeek = canScheduleThisWeek ?? naturalTime.canScheduleThisWeek
+        self.mustRespectDate = mustRespectDate ?? naturalTime.mustRespectDate
+        self.mustRespectDay = mustRespectDay ?? naturalTime.mustRespectDay
+        self.mustRespectWindow = mustRespectWindow ?? naturalTime.mustRespectWindow
+        self.allowFlexiblePlacement = allowFlexiblePlacement ?? naturalTime.allowFlexiblePlacement
     }
 
     var category: TaskCategory {
-        get { TaskCategory(rawValue: categoryRawValue) ?? .other }
+        get { TaskCategory.fromStorage(categoryRawValue) }
         set {
             categoryRawValue = newValue.rawValue
             touch()
@@ -90,7 +118,7 @@ final class TaskItem: Identifiable {
     }
 
     var priority: PriorityLevel {
-        get { PriorityLevel(rawValue: priorityRawValue) ?? .normal }
+        get { PriorityLevel.fromStorage(priorityRawValue) }
         set {
             priorityRawValue = newValue.rawValue
             touch()
@@ -98,7 +126,7 @@ final class TaskItem: Identifiable {
     }
 
     var energyLevel: EnergyLevel {
-        get { EnergyLevel(rawValue: energyLevelRawValue) ?? .any }
+        get { EnergyLevel.fromStorage(energyLevelRawValue) }
         set {
             energyLevelRawValue = newValue.rawValue
             touch()
@@ -119,6 +147,56 @@ final class TaskItem: Identifiable {
             sourceRawValue = newValue.rawValue
             touch()
         }
+    }
+
+    var preferredWeekday: Weekday? {
+        get {
+            guard let preferredDayOfWeek else { return nil }
+            return Weekday(calendarWeekday: preferredDayOfWeek)
+        }
+        set {
+            preferredDayOfWeek = newValue?.calendarWeekday
+            touch()
+        }
+    }
+
+    var preferredWindow: FlexibleWindow? {
+        get {
+            if let preferredWindowRawValue, let stored = FlexibleWindow(rawValue: preferredWindowRawValue) {
+                return stored
+            }
+            return FlexibleWindow.fromLegacyLabel(flexibleWindow)
+        }
+        set {
+            preferredWindowRawValue = newValue?.rawValue
+            if flexibleWindow?.nilIfBlank == nil || FlexibleWindow.fromLegacyLabel(flexibleWindow) != nil {
+                flexibleWindow = newValue?.title
+            }
+            touch()
+        }
+    }
+
+    var timingSummary: String? {
+        var parts: [String] = []
+        if let dueDate {
+            if Calendar.current.isDateInToday(dueDate) {
+                parts.append("Today")
+            } else if Calendar.current.isDateInTomorrow(dueDate) {
+                parts.append("Tomorrow")
+            } else {
+                parts.append(DateFormatting.shortDate.string(from: dueDate))
+            }
+        } else if let preferredWeekday {
+            parts.append(preferredWeekday.title)
+        }
+
+        if let preferredWindow {
+            parts.append(preferredWindow.title)
+        } else if let flexibleWindow = flexibleWindow?.nilIfBlank {
+            parts.append(flexibleWindow)
+        }
+
+        return parts.isEmpty ? nil : parts.joined(separator: " ")
     }
 
     var shrinkOptions: [String] {
@@ -191,19 +269,26 @@ final class TaskItem: Identifiable {
 struct NaturalTimeHint: Equatable {
     var cleanedTitle: String
     var preferredDate: Date?
-    var preferredDayOfWeek: Int?
+    var preferredDayOfWeek: Weekday?
+    var preferredWindow: FlexibleWindow?
     var flexibleWindowLabel: String?
     var estimatedMinutes: Int?
     var recurrenceHint: String?
     var isThisWeek: Bool
+    var canScheduleToday: Bool
+    var canScheduleThisWeek: Bool
+    var mustRespectDate: Bool
+    var mustRespectDay: Bool
+    var mustRespectWindow: Bool
+    var allowFlexiblePlacement: Bool
 }
 
 struct NaturalTimeParserSampleCase: Identifiable {
     let id = UUID()
     var rawText: String
     var expectedCleanedTitle: String
-    var expectedPreferredDayOfWeek: Int?
-    var expectedWindowLabel: String?
+    var expectedPreferredDayOfWeek: Weekday?
+    var expectedWindow: FlexibleWindow?
     var expectedEstimatedMinutes: Int?
 }
 
@@ -213,35 +298,35 @@ enum NaturalTimeParser {
             rawText: "Organize pills in the morning",
             expectedCleanedTitle: "Organize pills",
             expectedPreferredDayOfWeek: nil,
-            expectedWindowLabel: "Morning",
+            expectedWindow: .morning,
             expectedEstimatedMinutes: nil
         ),
         NaturalTimeParserSampleCase(
             rawText: "Take out the trash on Thursday evening",
             expectedCleanedTitle: "Take out the trash",
-            expectedPreferredDayOfWeek: 5,
-            expectedWindowLabel: "Evening",
+            expectedPreferredDayOfWeek: .thursday,
+            expectedWindow: .evening,
             expectedEstimatedMinutes: 10
         ),
         NaturalTimeParserSampleCase(
             rawText: "Pay electric bill tomorrow",
             expectedCleanedTitle: "Pay electric bill",
             expectedPreferredDayOfWeek: nil,
-            expectedWindowLabel: nil,
+            expectedWindow: nil,
             expectedEstimatedMinutes: nil
         ),
         NaturalTimeParserSampleCase(
             rawText: "Call dentist this week",
             expectedCleanedTitle: "Call dentist",
             expectedPreferredDayOfWeek: nil,
-            expectedWindowLabel: nil,
+            expectedWindow: nil,
             expectedEstimatedMinutes: 10
         ),
         NaturalTimeParserSampleCase(
             rawText: "Sunday afternoon",
             expectedCleanedTitle: "Untitled task",
-            expectedPreferredDayOfWeek: 1,
-            expectedWindowLabel: "Afternoon",
+            expectedPreferredDayOfWeek: .sunday,
+            expectedWindow: .afternoon,
             expectedEstimatedMinutes: nil
         )
     ]
@@ -251,11 +336,11 @@ enum NaturalTimeParser {
             let parsed = parse(sample.rawText, now: now)
             guard parsed.cleanedTitle != sample.expectedCleanedTitle
                 || parsed.preferredDayOfWeek != sample.expectedPreferredDayOfWeek
-                || parsed.flexibleWindowLabel != sample.expectedWindowLabel
+                || parsed.preferredWindow != sample.expectedWindow
                 || parsed.estimatedMinutes != sample.expectedEstimatedMinutes else {
                 return nil
             }
-            return "\(sample.rawText) parsed as title=\(parsed.cleanedTitle), weekday=\(String(describing: parsed.preferredDayOfWeek)), window=\(String(describing: parsed.flexibleWindowLabel)), minutes=\(String(describing: parsed.estimatedMinutes))"
+            return "\(sample.rawText) parsed as title=\(parsed.cleanedTitle), weekday=\(String(describing: parsed.preferredDayOfWeek)), window=\(String(describing: parsed.preferredWindow)), minutes=\(String(describing: parsed.estimatedMinutes))"
         }
     }
 
@@ -267,60 +352,67 @@ enum NaturalTimeParser {
         let lowered = rawText.lowercased()
         let preferredDayOfWeek = weekday(in: lowered)
         let preferredDate = preferredDate(in: lowered, now: now, calendar: calendar)
-        let flexibleWindowLabel = flexibleWindow(in: lowered)
+        let preferredWindow = flexibleWindow(in: lowered)
         let recurrenceHint = recurrenceHint(in: lowered)
         let cleanedTitle = cleanTitle(from: rawText)
         let estimatedMinutes = explicitEstimatedMinutes(in: lowered)
             ?? inferredEstimatedMinutes(from: cleanedTitle.isEmpty ? rawText : cleanedTitle)
+        let hasRelativeWeek = contains(#"\bthis\s+week\b"#, in: lowered)
+        let mustRespectDate = preferredDate != nil
+        let mustRespectDay = preferredDayOfWeek != nil
+        let mustRespectWindow = preferredWindow != nil
+        let canScheduleThisWeek = hasRelativeWeek || preferredDate != nil || preferredDayOfWeek != nil || recurrenceHint != nil || (!mustRespectDate && !mustRespectDay)
+        let canScheduleToday: Bool
+        if let preferredDate {
+            canScheduleToday = calendar.isDate(preferredDate, inSameDayAs: now)
+        } else if let preferredDayOfWeek {
+            canScheduleToday = preferredDayOfWeek.calendarWeekday == calendar.component(.weekday, from: now)
+        } else {
+            canScheduleToday = true
+        }
 
         return NaturalTimeHint(
             cleanedTitle: cleanedTitle.isEmpty ? "Untitled task" : cleanedTitle,
             preferredDate: preferredDate,
             preferredDayOfWeek: preferredDayOfWeek,
-            flexibleWindowLabel: flexibleWindowLabel,
+            preferredWindow: preferredWindow,
+            flexibleWindowLabel: preferredWindow?.title,
             estimatedMinutes: estimatedMinutes,
             recurrenceHint: recurrenceHint,
-            isThisWeek: contains(#"\bthis\s+week\b"#, in: lowered)
+            isThisWeek: hasRelativeWeek,
+            canScheduleToday: canScheduleToday,
+            canScheduleThisWeek: canScheduleThisWeek,
+            mustRespectDate: mustRespectDate,
+            mustRespectDay: mustRespectDay,
+            mustRespectWindow: mustRespectWindow,
+            allowFlexiblePlacement: !(mustRespectDate || mustRespectDay || mustRespectWindow)
         )
     }
 
+    static func normalizedWindow(_ label: String?) -> FlexibleWindow? {
+        FlexibleWindow.fromLegacyLabel(label)
+    }
+
     static func normalizedWindowLabel(_ label: String?) -> String? {
-        guard let label else { return nil }
-        let normalized = label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        switch normalized {
-        case "morning", "this morning":
-            return "Morning"
-        case "afternoon":
-            return "Afternoon"
-        case "evening", "evening window", "tonight", "night", "after dinner":
-            return "Evening"
-        case "after work":
-            return "After work"
-        case "before bed", "bedtime":
-            return "Before bed"
-        case "today", "tomorrow", "this week":
-            return nil
-        default:
-            return label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : label
-        }
+        normalizedWindow(label)?.title
     }
 
     static func weekdayName(for weekday: Int) -> String? {
-        weekdays.first { $0.value == weekday }?.displayName
+        Weekday(calendarWeekday: weekday)?.title
     }
 
-    private static let weekdays: [(name: String, displayName: String, value: Int)] = [
-        ("sunday", "Sunday", 1),
-        ("monday", "Monday", 2),
-        ("tuesday", "Tuesday", 3),
-        ("wednesday", "Wednesday", 4),
-        ("thursday", "Thursday", 5),
-        ("friday", "Friday", 6),
-        ("saturday", "Saturday", 7)
+    private static let weekdays: [(name: String, day: Weekday)] = [
+        ("sunday", .sunday),
+        ("monday", .monday),
+        ("tuesday", .tuesday),
+        ("wednesday", .wednesday),
+        ("thursday", .thursday),
+        ("friday", .friday),
+        ("saturday", .saturday)
     ]
 
-    private static func weekday(in text: String) -> Int? {
-        weekdays.first { contains(#"\b\#($0.name)\b"#, in: text) }?.value
+    private static func weekday(in text: String) -> Weekday? {
+        weekdays.first { contains(#"\b\#($0.name)\b"#, in: text) }?.day
     }
 
     private static func preferredDate(in text: String, now: Date, calendar: Calendar) -> Date? {
@@ -336,13 +428,14 @@ enum NaturalTimeParser {
         return nil
     }
 
-    private static func flexibleWindow(in text: String) -> String? {
-        if contains(#"\bbefore\s+bed\b|\bbedtime\b"#, in: text) { return "Before bed" }
-        if contains(#"\bafter\s+work\b"#, in: text) { return "After work" }
-        if contains(#"\bafter\s+dinner\b"#, in: text) { return "Evening" }
-        if contains(#"\btonight\b|\bevening\b|\bnight\b"#, in: text) { return "Evening" }
-        if contains(#"\bafternoon\b"#, in: text) { return "Afternoon" }
-        if contains(#"\bmorning\b"#, in: text) { return "Morning" }
+    private static func flexibleWindow(in text: String) -> FlexibleWindow? {
+        if contains(#"\bbefore\s+bed\b|\bbedtime\b"#, in: text) { return .beforeBed }
+        if contains(#"\bafter\s+work\b"#, in: text) { return .afterWork }
+        if contains(#"\bafter\s+dinner\b"#, in: text) { return .evening }
+        if contains(#"\btonight\b|\bevening\b|\bnight\b"#, in: text) { return .evening }
+        if contains(#"\bafternoon\b"#, in: text) { return .afternoon }
+        if contains(#"\bmidday\b|\bnoon\b|\blunch\b"#, in: text) { return .midday }
+        if contains(#"\bmorning\b"#, in: text) { return .morning }
         return nil
     }
 
@@ -368,7 +461,7 @@ enum NaturalTimeParser {
         if contains(#"\bevery\s+day\b|\bdaily\b"#, in: text) { return "daily" }
         if contains(#"\bevery\s+week\b|\bweekly\b"#, in: text) { return "weekly" }
         if let weekday = weekday(in: text), contains(#"\bevery\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b"#, in: text) {
-            return "weekly:\(NaturalTimeParser.weekdayName(for: weekday) ?? "weekday")"
+            return "weekly:\(weekday.title)"
         }
         return nil
     }

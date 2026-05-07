@@ -90,6 +90,9 @@ struct BuildPlanView: View {
         .toolbar(.hidden, for: .navigationBar)
         .onAppear {
             gentleActiveTab?.wrappedValue = .plan
+            if let preference = preferences.first, viewModel.response == nil {
+                viewModel.applyDefaults(from: preference)
+            }
         }
     }
 
@@ -117,15 +120,14 @@ struct BuildPlanView: View {
     }
 
     @MainActor
-    private func persist(_ response: AIPlanResponse) {
-        for plannedBlock in response.proposedScheduleBlocks {
+    private func persist(_ response: AIScheduleBuildResponse) {
+        for plannedBlock in response.proposedBlocks {
             let alreadyExists = blocks.contains { existing in
                 existing.taskId == plannedBlock.taskId && existing.status != .done && existing.status != .skipped
             }
             guard !alreadyExists else { continue }
 
             let block = ScheduleBlock(
-                id: plannedBlock.id,
                 taskId: plannedBlock.taskId,
                 title: plannedBlock.title,
                 startTime: plannedBlock.startTime,
@@ -133,7 +135,7 @@ struct BuildPlanView: View {
                 flexibleWindowLabel: plannedBlock.flexibleWindowLabel,
                 category: plannedBlock.category,
                 reminderStyle: plannedBlock.reminderStyle,
-                aiReason: plannedBlock.aiReason
+                aiReason: plannedBlock.aiReason ?? ""
             )
             modelContext.insert(block)
 
@@ -308,7 +310,7 @@ private struct AvailableTimeCard: View {
 }
 
 private struct PlanResponseView: View {
-    var response: AIPlanResponse
+    var response: AIScheduleBuildResponse
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -321,8 +323,8 @@ private struct PlanResponseView: View {
                     Text(warning.message)
                         .font(AppTypography.callout.weight(.semibold))
                         .foregroundStyle(AppColors.navy)
-                    if let suggestion = warning.suggestion {
-                        Text(suggestion)
+                    if let taskTitle = warning.taskTitle?.nilIfBlank {
+                        Text(taskTitle)
                             .font(AppTypography.callout)
                             .foregroundStyle(AppColors.mutedText)
                     }
@@ -332,7 +334,7 @@ private struct PlanResponseView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
 
-            ForEach(response.proposedScheduleBlocks) { block in
+            ForEach(response.proposedBlocks) { block in
                 HStack(alignment: .top, spacing: 12) {
                     Circle()
                         .fill(GentleTheme.color(for: block.category))

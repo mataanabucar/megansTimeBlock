@@ -10,3 +10,6 @@ xcuserdata/
 server/.env
 server/node_modules/
 server/uploads/
+ServerProxyExample/.env
+ServerProxyExample/node_modules/
+ServerProxyExample/uploads/

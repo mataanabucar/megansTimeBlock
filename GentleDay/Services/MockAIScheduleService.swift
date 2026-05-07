@@ -101,7 +101,7 @@ struct MockAIScheduleService: AIScheduleService {
     private struct TaskTimeContext {
         var cleanedTitle: String
         var preferredDate: Date?
-        var preferredDayOfWeek: Int?
+        var preferredDayOfWeek: Weekday?
         var flexibleWindowLabel: String?
         var recurrenceHint: String?
         var isThisWeek: Bool
@@ -143,7 +143,7 @@ struct MockAIScheduleService: AIScheduleService {
             if let preferredDate, !calendar.isDate(preferredDate, inSameDayAs: now) {
                 return false
             }
-            if let weekday = context.preferredDayOfWeek, weekday != calendar.component(.weekday, from: now) {
+            if let weekday = context.preferredDayOfWeek, weekday.calendarWeekday != calendar.component(.weekday, from: now) {
                 return false
             }
             return true
@@ -153,7 +153,7 @@ struct MockAIScheduleService: AIScheduleService {
             if let preferredDate, !calendar.isDate(preferredDate, inSameDayAs: tomorrow) {
                 return false
             }
-            if let weekday = context.preferredDayOfWeek, weekday != calendar.component(.weekday, from: tomorrow) {
+            if let weekday = context.preferredDayOfWeek, weekday.calendarWeekday != calendar.component(.weekday, from: tomorrow) {
                 return false
             }
             return true
@@ -164,7 +164,7 @@ struct MockAIScheduleService: AIScheduleService {
                 return false
             }
             if let weekday = context.preferredDayOfWeek,
-               matchingDate(for: weekday, from: baseDay, dayCount: 7, calendar: calendar) == nil {
+               matchingDate(for: weekday.calendarWeekday, from: baseDay, dayCount: 7, calendar: calendar) == nil {
                 return false
             }
             return true
@@ -200,7 +200,7 @@ struct MockAIScheduleService: AIScheduleService {
     ) -> String {
         let preferredDate = task.dueDate ?? context.preferredDate
         let datePart: String? = if let weekday = context.preferredDayOfWeek {
-            NaturalTimeParser.weekdayName(for: weekday)
+            weekday.title
         } else if let preferredDate {
             if calendar.isDate(preferredDate, inSameDayAs: now) {
                 "today"
@@ -226,7 +226,7 @@ struct MockAIScheduleService: AIScheduleService {
         return TaskTimeContext(
             cleanedTitle: parsed.cleanedTitle,
             preferredDate: task.dueDate ?? parsed.preferredDate,
-            preferredDayOfWeek: task.preferredDayOfWeek ?? parsed.preferredDayOfWeek,
+            preferredDayOfWeek: task.preferredWeekday ?? parsed.preferredDayOfWeek,
             flexibleWindowLabel: NaturalTimeParser.normalizedWindowLabel(task.flexibleWindow) ?? parsed.flexibleWindowLabel,
             recurrenceHint: task.recurrenceRule ?? parsed.recurrenceHint,
             isThisWeek: parsed.isThisWeek || task.flexibleWindow?.localizedCaseInsensitiveContains("this week") == true
@@ -237,10 +237,10 @@ struct MockAIScheduleService: AIScheduleService {
         var value = 0
 
         switch task.priority {
-        case .essential: value += 60
-        case .important: value += 40
+        case .mustDo: value += 60
+        case .high: value += 40
         case .normal: value += 20
-        case .soft: value += 5
+        case .low: value += 5
         }
 
         if let dueDate = task.dueDate {
@@ -257,9 +257,9 @@ struct MockAIScheduleService: AIScheduleService {
         case .errandsDay:
             if task.category == .errand || task.category == .appointment { value += 35 }
         case .homeReset:
-            if task.category == .home || task.category == .cleaning || task.category == .routine { value += 35 }
+            if task.category == .home || task.category == .cleaning || task.category == .habit { value += 35 }
         case .catchUpDay:
-            if task.priority == .important || task.priority == .essential { value += 20 }
+            if task.priority == .high || task.priority == .mustDo { value += 20 }
         case .balancedDay:
             value += task.energyLevel == .low ? 10 : 0
         }
@@ -392,7 +392,7 @@ struct MockAIScheduleService: AIScheduleService {
         }
 
         if let weekday = context.preferredDayOfWeek,
-           let day = matchingDate(for: weekday, from: baseDay, dayCount: dayCount, calendar: calendar) {
+           let day = matchingDate(for: weekday.calendarWeekday, from: baseDay, dayCount: dayCount, calendar: calendar) {
             return [day]
         }
 
@@ -522,7 +522,7 @@ struct MockAIScheduleService: AIScheduleService {
     }
 
     private func reminderStyle(for task: TaskItem, preferences: UserPlanningPreferences) -> ReminderStyle {
-        if preferences.enableTimeSensitiveReminders && task.priority == .essential {
+        if preferences.enableTimeSensitiveReminders && task.priority == .mustDo {
             return .timeSensitive
         }
         return preferences.defaultReminderStyle == .alarmCandidate ? .gentle : preferences.defaultReminderStyle

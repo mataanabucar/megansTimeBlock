@@ -7,31 +7,32 @@ final class BuildPlanViewModel {
     var selectedRange: ScheduleRange = .today
     var selectedStyle: PlanningStyle = .balancedDay
     var isGenerating = false
-    var response: AIPlanResponse?
+    var response: AIScheduleBuildResponse?
     var errorMessage: String?
 
-    @ObservationIgnored private let service: any AIScheduleService
+    @ObservationIgnored private let planner = GentlePlannerService()
 
-    init(service: any AIScheduleService = MockAIScheduleService()) {
-        self.service = service
+    func applyDefaults(from preferences: UserPlanningPreferences) {
+        selectedRange = preferences.defaultScheduleRange
+        selectedStyle = preferences.defaultPlanningStyle
     }
 
     func generate(
         tasks: [TaskItem],
         existingScheduleBlocks: [ScheduleBlock],
         preferences: UserPlanningPreferences
-    ) async -> AIPlanResponse? {
+    ) async -> AIScheduleBuildResponse? {
         isGenerating = true
         errorMessage = nil
         defer { isGenerating = false }
 
         do {
-            let result = try await service.generatePlan(
+            let result = try await planner.buildSchedule(
                 tasks: tasks,
-                existingScheduleBlocks: existingScheduleBlocks,
+                existingBlocks: existingScheduleBlocks,
                 preferences: preferences,
-                scheduleRange: selectedRange,
-                planningStyle: selectedStyle
+                range: selectedRange,
+                style: selectedStyle
             )
             response = result
             return result
@@ -41,4 +42,3 @@ final class BuildPlanViewModel {
         }
     }
 }
-

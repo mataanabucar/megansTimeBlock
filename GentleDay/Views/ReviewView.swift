@@ -98,20 +98,19 @@ struct ReviewView: View {
 
     private func buildTomorrowMinimumDay() {
         guard let preference = preferences.first else { return }
-        let service = MockAIScheduleService()
+        let planner = GentlePlannerService()
         Task {
-            let response = try? await service.generatePlan(
+            let response = try? await planner.buildSchedule(
                 tasks: tasks,
-                existingScheduleBlocks: blocks,
+                existingBlocks: blocks,
                 preferences: preference,
-                scheduleRange: .tomorrow,
-                planningStyle: .minimumDay
+                range: .tomorrow,
+                style: .minimumDay
             )
             await MainActor.run {
                 guard let response else { return }
-                for plannedBlock in response.proposedScheduleBlocks {
+                for plannedBlock in response.proposedBlocks {
                     let block = ScheduleBlock(
-                        id: plannedBlock.id,
                         taskId: plannedBlock.taskId,
                         title: plannedBlock.title,
                         startTime: plannedBlock.startTime,
@@ -119,7 +118,7 @@ struct ReviewView: View {
                         flexibleWindowLabel: plannedBlock.flexibleWindowLabel,
                         category: plannedBlock.category,
                         reminderStyle: plannedBlock.reminderStyle,
-                        aiReason: plannedBlock.aiReason
+                        aiReason: plannedBlock.aiReason ?? ""
                     )
                     modelContext.insert(block)
                     if let task = tasks.first(where: { $0.id == plannedBlock.taskId }) {

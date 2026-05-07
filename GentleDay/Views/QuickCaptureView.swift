@@ -1,10 +1,22 @@
 import SwiftData
 import SwiftUI
 
+private struct AIParseDraft: Identifiable {
+    let id = UUID()
+    let originalText: String
+    let response: AITaskParseResponse
+}
+
 struct QuickCaptureView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Query private var tasks: [TaskItem]
+    @Query private var blocks: [ScheduleBlock]
+    @Query private var preferences: [UserPlanningPreferences]
     @State private var viewModel = QuickCaptureViewModel()
+    @State private var aiDraft: AIParseDraft?
+    @State private var isOrganizingWithAI = false
+    @State private var aiMessage: String?
 
     private var visibleChips: [QuickCaptureChip] {
         let titles = ["Today", "This Week", "Home", "Errand", "15 min", "30 min", "1 hour"]
@@ -54,6 +66,37 @@ struct QuickCaptureView: View {
         .toolbar(.hidden, for: .navigationBar)
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 0) {
+                Button {
+                    organizeWithAI()
+                } label: {
+                    HStack(spacing: 8) {
+                        if isOrganizingWithAI {
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                                .tint(AppColors.lavenderDeep)
+                        } else {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+
+                        Text(isOrganizingWithAI ? "Organizing..." : "Organize with AI")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .foregroundStyle(canOrganizeWithAI ? AppColors.lavenderDeep : AppColors.faintText)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                    .background(canOrganizeWithAI ? AppColors.lavenderSoft : AppColors.cardLift)
+                    .clipShape(RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous)
+                            .stroke(AppColors.softBorder.opacity(0.65), lineWidth: 0.8)
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(!canOrganizeWithAI || isOrganizingWithAI)
+                .padding(.horizontal, GentleLayout.pageHorizontalPadding)
+                .padding(.top, 12)
+
                 GentlePrimaryButton(title: viewModel.saveButtonTitle, systemImage: nil) {
                     save()
                 }
@@ -61,8 +104,17 @@ struct QuickCaptureView: View {
                 .opacity(viewModel.canSave ? 1 : 0.48)
                 .padding(.horizontal, GentleLayout.pageHorizontalPadding)
                 .padding(.top, 12)
-                .padding(.bottom, 12)
+
+                if let aiMessage {
+                    Text(aiMessage)
+                        .font(AppTypography.caption)
+                        .foregroundStyle(AppColors.mutedText)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, GentleLayout.pageHorizontalPadding)
+                        .padding(.top, 10)
+                }
             }
+            .padding(.bottom, 12)
             .background(AppColors.background.opacity(0.94))
         }
         .onDisappear {
@@ -72,6 +124,23 @@ struct QuickCaptureView: View {
             guard requestID != nil else { return }
             save()
         }
+        .sheet(item: $aiDraft) { draft in
+            AIParsePreviewView(
+                originalText: draft.originalText,
+                response: draft.response,
+                onSave: { saveAIResponse(draft.response) },
+                onEditFirst: {
+                    aiMessage = "You can adjust the text and try again."
+                },
+                onUseRawText: save,
+                onCancel: {}
+            )
+        }
+    }
+
+    private var canOrganizeWithAI: Bool {
+        guard let preferences = preferences.first else { return false }
+        return preferences.enableAIParsing && !viewModel.rawText.trimmedForStorage.isEmpty
     }
 
     private var topControls: some View {
@@ -197,6 +266,100 @@ struct QuickCaptureView: View {
         } catch {
             viewModel.voiceMessage = error.localizedDescription
         }
+    }
+
+    private func saveAIResponse(_ response: AITaskParseResponse) {
+        let source = viewModel.source
+        let items = response.tasks.map { $0.makeTaskItem(source: source) }
+        guard !items.isEmpty else { return }
+
+        items.forEach(modelContext.insert)
+        do {
+            try modelContext.save()
+            aiMessage = response.friendlySummary
+            viewModel.reset()
+            dismiss()
+        } catch {
+            aiMessage = error.localizedDescription
+        }
+    }
+
+    private func organizeWithAI() {
+        guard let preferences = preferences.first else {
+            aiMessage = "Settings are still loading. Please try again in a moment."
+            return
+        }
+        guard preferences.enableAIParsing else {
+            aiMessage = AIParsingFeatureError.disabled.localizedDescription
+            return
+        }
+
+        let rawText = viewModel.rawText.trimmedForStorage
+        guard !rawText.isEmpty else { return }
+
+        isOrganizingWithAI = true
+        aiMessage = nil
+
+        let context = AIPlanningContext(
+            currentDate: Date(),
+            timezoneIdentifier: TimeZone.current.identifier,
+            scheduleRange: preferences.defaultScheduleRange,
+            planningStyle: preferences.defaultPlanningStyle,
+            userPreferences: preferences,
+            existingTasks: tasks,
+            existingScheduleBlocks: blocks
+        )
+
+        Task {
+            do {
+                let service = AIParsingServiceFactory.makeService(preferences: preferences)
+                let response = try await service.parseTaskCapture(rawText: rawText, context: context)
+                let patched = applyQuickDetails(to: response)
+                await MainActor.run {
+                    isOrganizingWithAI = false
+                    aiDraft = AIParseDraft(originalText: rawText, response: patched)
+                    aiMessage = patched.friendlySummary
+                }
+            } catch {
+                await MainActor.run {
+                    isOrganizingWithAI = false
+                    aiMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func applyQuickDetails(to response: AITaskParseResponse) -> AITaskParseResponse {
+        let selectedCategory = viewModel.selectedChips.compactMap(\.category).first
+        let selectedMinutes = viewModel.selectedChips.compactMap(\.minutes).first
+        let dueDate = viewModel.selectedChips.compactMap(\.dueDateOffset).min().flatMap { offset in
+            Calendar.current.date(byAdding: .day, value: offset, to: Date())
+        }
+
+        let patchedTasks = response.tasks.map { original in
+            var task = original
+            if let selectedCategory {
+                task.category = selectedCategory
+            }
+            if let selectedMinutes {
+                task.estimatedMinutes = selectedMinutes
+            }
+            if let dueDate {
+                task.preferredDate = dueDate
+                task.dueDate = dueDate
+                task.scheduleRule.mustRespectDate = true
+                task.scheduleRule.canScheduleToday = Calendar.current.isDateInToday(dueDate)
+                task.scheduleRule.canScheduleThisWeek = true
+            }
+            return task
+        }
+
+        return AITaskParseResponse(
+            tasks: patchedTasks,
+            warnings: response.warnings,
+            friendlySummary: response.friendlySummary,
+            needsReview: response.needsReview
+        )
     }
 
     private func icon(for chip: QuickCaptureChip) -> String? {

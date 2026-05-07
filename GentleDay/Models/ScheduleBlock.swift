@@ -14,7 +14,7 @@ final class ScheduleBlock: Identifiable {
     var reminderStyleRawValue: String
     var snoozeMinutes: Int
     var isLocked: Bool
-    var aiReason: String
+    var aiReason: String = ""
     var createdAt: Date
     var updatedAt: Date
 
@@ -51,7 +51,7 @@ final class ScheduleBlock: Identifiable {
     }
 
     var category: TaskCategory {
-        get { TaskCategory(rawValue: categoryRawValue) ?? .other }
+        get { TaskCategory.fromStorage(categoryRawValue) }
         set {
             categoryRawValue = newValue.rawValue
             touch()

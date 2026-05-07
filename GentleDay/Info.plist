@@ -32,7 +32,7 @@
 		<true/>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Use your local network to connect to the Gentle Day voice parser running on your Mac.</string>
+	<string>Use your local network to connect to a Gentle Day development proxy running on your Mac.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Use your microphone to turn spoken tasks into quick captures.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

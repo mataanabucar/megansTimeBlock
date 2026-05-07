@@ -112,6 +112,8 @@ private struct SettingsContent: View {
             }
             .gentleCardStyle()
 
+            AISettingsView(preferences: preferences)
+
             VStack(alignment: .leading, spacing: 14) {
                 Text("Reminders")
                     .font(.headline)

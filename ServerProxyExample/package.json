@@ -1,0 +1,14 @@
+{
+  "name": "gentle-day-server-proxy-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "openai": "^4.104.0"
+  }
+}

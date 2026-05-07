@@ -4,14 +4,14 @@ enum TaskCategory: String, Codable, CaseIterable, Identifiable, Hashable {
     case home
     case errand
     case family
+    case health
     case money
     case appointment
+    case meal
     case cleaning
-    case wellness
-    case meals
-    case bills
-    case routine
-    case lifeAdmin
+    case personal
+    case reminder
+    case habit
     case other
 
     var id: String { rawValue }
@@ -21,33 +21,60 @@ enum TaskCategory: String, Codable, CaseIterable, Identifiable, Hashable {
         case .home: "Home"
         case .errand: "Errand"
         case .family: "Family"
+        case .health: "Health"
         case .money: "Money"
         case .appointment: "Appointment"
+        case .meal: "Meal"
         case .cleaning: "Cleaning"
-        case .wellness: "Wellness"
-        case .meals: "Meals"
-        case .bills: "Bills"
-        case .routine: "Routine"
-        case .lifeAdmin: "Life Admin"
+        case .personal: "Personal"
+        case .reminder: "Reminder"
+        case .habit: "Habit"
         case .other: "Other"
+        }
+    }
+
+    static func fromStorage(_ rawValue: String) -> TaskCategory {
+        switch rawValue {
+        case TaskCategory.home.rawValue: .home
+        case TaskCategory.errand.rawValue: .errand
+        case TaskCategory.family.rawValue: .family
+        case TaskCategory.health.rawValue, "wellness": .health
+        case TaskCategory.money.rawValue, "bills": .money
+        case TaskCategory.appointment.rawValue: .appointment
+        case TaskCategory.meal.rawValue, "meals": .meal
+        case TaskCategory.cleaning.rawValue: .cleaning
+        case TaskCategory.personal.rawValue, "lifeAdmin": .personal
+        case TaskCategory.reminder.rawValue: .reminder
+        case TaskCategory.habit.rawValue, "routine": .habit
+        default: .other
         }
     }
 }
 
 enum PriorityLevel: String, Codable, CaseIterable, Identifiable, Hashable {
-    case soft
+    case low
     case normal
-    case important
-    case essential
+    case high
+    case mustDo
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .soft: "Soft"
+        case .low: "Low"
         case .normal: "Normal"
-        case .important: "Important"
-        case .essential: "Essential"
+        case .high: "High"
+        case .mustDo: "Must Do"
+        }
+    }
+
+    static func fromStorage(_ rawValue: String) -> PriorityLevel {
+        switch rawValue {
+        case PriorityLevel.low.rawValue, "soft": .low
+        case PriorityLevel.normal.rawValue: .normal
+        case PriorityLevel.high.rawValue, "important": .high
+        case PriorityLevel.mustDo.rawValue, "essential": .mustDo
+        default: .normal
         }
     }
 }
@@ -56,6 +83,10 @@ enum EnergyLevel: String, Codable, CaseIterable, Identifiable, Hashable {
     case low
     case medium
     case high
+    case brainTired
+    case bodyRestless
+    case quickWin
+    case calm
     case any
 
     var id: String { rawValue }
@@ -65,8 +96,16 @@ enum EnergyLevel: String, Codable, CaseIterable, Identifiable, Hashable {
         case .low: "Low Energy"
         case .medium: "Some Energy"
         case .high: "More Energy"
+        case .brainTired: "Brain Tired"
+        case .bodyRestless: "Body Restless"
+        case .quickWin: "Quick Win"
+        case .calm: "Calm"
         case .any: "Any Energy"
         }
+    }
+
+    static func fromStorage(_ rawValue: String) -> EnergyLevel {
+        EnergyLevel(rawValue: rawValue) ?? .any
     }
 }
 
@@ -209,4 +248,122 @@ enum CaptureSource: String, Codable, CaseIterable, Identifiable, Hashable {
     case voicePlaceholder
 
     var id: String { rawValue }
+}
+
+enum AIParsingMode: String, Codable, CaseIterable, Identifiable, Hashable {
+    case mockAI
+    case openAIProxy
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .mockAI: "Mock AI"
+        case .openAIProxy: "OpenAI via Proxy"
+        }
+    }
+
+    var friendlyDescription: String {
+        switch self {
+        case .mockAI:
+            return "Local testing mode. No internet or backend needed."
+        case .openAIProxy:
+            return "Hosted backend mode for real AI parsing."
+        }
+    }
+}
+
+enum Weekday: String, Codable, CaseIterable, Identifiable, Hashable {
+    case monday
+    case tuesday
+    case wednesday
+    case thursday
+    case friday
+    case saturday
+    case sunday
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .monday: "Monday"
+        case .tuesday: "Tuesday"
+        case .wednesday: "Wednesday"
+        case .thursday: "Thursday"
+        case .friday: "Friday"
+        case .saturday: "Saturday"
+        case .sunday: "Sunday"
+        }
+    }
+
+    var calendarWeekday: Int {
+        switch self {
+        case .sunday: 1
+        case .monday: 2
+        case .tuesday: 3
+        case .wednesday: 4
+        case .thursday: 5
+        case .friday: 6
+        case .saturday: 7
+        }
+    }
+
+    init?(calendarWeekday: Int) {
+        switch calendarWeekday {
+        case 1: self = .sunday
+        case 2: self = .monday
+        case 3: self = .tuesday
+        case 4: self = .wednesday
+        case 5: self = .thursday
+        case 6: self = .friday
+        case 7: self = .saturday
+        default: return nil
+        }
+    }
+}
+
+enum FlexibleWindow: String, Codable, CaseIterable, Identifiable, Hashable {
+    case morning
+    case midday
+    case afternoon
+    case afterWork
+    case evening
+    case beforeBed
+    case anytime
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .morning: "Morning"
+        case .midday: "Midday"
+        case .afternoon: "Afternoon"
+        case .afterWork: "After Work"
+        case .evening: "Evening"
+        case .beforeBed: "Before Bed"
+        case .anytime: "Anytime"
+        }
+    }
+
+    static func fromLegacyLabel(_ rawValue: String?) -> FlexibleWindow? {
+        guard let rawValue else { return nil }
+        switch rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "morning", "this morning":
+            return .morning
+        case "midday", "noon", "lunch":
+            return .midday
+        case "afternoon":
+            return .afternoon
+        case "after work":
+            return .afterWork
+        case "evening", "tonight", "night", "after dinner":
+            return .evening
+        case "before bed", "bedtime":
+            return .beforeBed
+        case "anytime", "gentle window":
+            return .anytime
+        default:
+            return nil
+        }
+    }
 }
