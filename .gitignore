@@ -10,3 +10,9 @@ xcuserdata/
 server/.env
 server/node_modules/
 server/uploads/
+
+# Local secrets
+.env
+.env.*
+!.env.example
+ServerProxyExample/.env
