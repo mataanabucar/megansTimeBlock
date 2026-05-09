@@ -188,6 +188,18 @@ final class TaskItem: Identifiable {
     }
 }
 
+/// Reasonable duration band inferred from a task's content. The scheduler
+/// is allowed to use the midpoint, but knowing the band lets it shrink for
+/// Light/Minimum days without picking unrealistic values.
+struct DurationBand: Equatable {
+    var lower: Int
+    var upper: Int
+
+    var midpoint: Int {
+        max(1, (lower + upper) / 2)
+    }
+}
+
 struct NaturalTimeHint: Equatable {
     var cleanedTitle: String
     var preferredDate: Date?
@@ -196,6 +208,31 @@ struct NaturalTimeHint: Equatable {
     var estimatedMinutes: Int?
     var recurrenceHint: String?
     var isThisWeek: Bool
+
+    // MARK: - New constraint hints (set defaults so existing callers compile)
+
+    /// Absolute deadline (date + time) that the task must finish by.
+    /// Source phrases: "by 6", "by six", "by 6:00 pm", "before noon".
+    /// The scheduler should compute `start = deadline - duration`.
+    var deadlineTime: Date? = nil
+
+    /// Soft cap on how late this task can be scheduled, regardless of the
+    /// flexible window. Used for child / family / outdoor activity context.
+    /// Time-of-day component only; the scheduler combines it with the chosen
+    /// day. Examples: "with Scarlett" → 19:30, "at the park" → 19:30.
+    var windowEndCap: DateComponents? = nil
+
+    /// Reason behind `windowEndCap`, surfaced in the scheduler's reason text.
+    var windowEndCapReason: String? = nil
+
+    /// Range range of acceptable durations (min..max). When set, the scheduler
+    /// can pick from this band instead of locking to a single value.
+    var durationLowerBoundMinutes: Int? = nil
+    var durationUpperBoundMinutes: Int? = nil
+
+    /// Min minute-of-day below which this task should not start (e.g.
+    /// "after work" → 17:00).
+    var earliestStartMinuteOfDay: Int? = nil
 }
 
 struct NaturalTimeParserSampleCase: Identifiable {
@@ -221,21 +258,21 @@ enum NaturalTimeParser {
             expectedCleanedTitle: "Take out the trash",
             expectedPreferredDayOfWeek: 5,
             expectedWindowLabel: "Evening",
-            expectedEstimatedMinutes: 10
+            expectedEstimatedMinutes: 7
         ),
         NaturalTimeParserSampleCase(
             rawText: "Pay electric bill tomorrow",
             expectedCleanedTitle: "Pay electric bill",
             expectedPreferredDayOfWeek: nil,
             expectedWindowLabel: nil,
-            expectedEstimatedMinutes: nil
+            expectedEstimatedMinutes: 7
         ),
         NaturalTimeParserSampleCase(
             rawText: "Call dentist this week",
             expectedCleanedTitle: "Call dentist",
             expectedPreferredDayOfWeek: nil,
             expectedWindowLabel: nil,
-            expectedEstimatedMinutes: 10
+            expectedEstimatedMinutes: 12
         ),
         NaturalTimeParserSampleCase(
             rawText: "Sunday afternoon",
@@ -243,6 +280,56 @@ enum NaturalTimeParser {
             expectedPreferredDayOfWeek: 1,
             expectedWindowLabel: "Afternoon",
             expectedEstimatedMinutes: nil
+        ),
+        // New cases that exercise the parser improvements made in Phase 2.
+        NaturalTimeParserSampleCase(
+            rawText: "Read a little bit before bed",
+            expectedCleanedTitle: "Read a little bit",
+            expectedPreferredDayOfWeek: nil,
+            expectedWindowLabel: "Before bed",
+            expectedEstimatedMinutes: 15
+        ),
+        NaturalTimeParserSampleCase(
+            rawText: "Spend some personal time at the park in the early evening",
+            expectedCleanedTitle: "Spend some personal time at the park",
+            expectedPreferredDayOfWeek: nil,
+            expectedWindowLabel: "Early evening",
+            expectedEstimatedMinutes: 67
+        ),
+        NaturalTimeParserSampleCase(
+            rawText: "Give Scarlett a bath in the afternoon",
+            expectedCleanedTitle: "Give Scarlett a bath",
+            expectedPreferredDayOfWeek: nil,
+            expectedWindowLabel: "Afternoon",
+            expectedEstimatedMinutes: 25
+        ),
+        NaturalTimeParserSampleCase(
+            rawText: "Go grocery shopping",
+            expectedCleanedTitle: "Go grocery shopping",
+            expectedPreferredDayOfWeek: nil,
+            expectedWindowLabel: nil,
+            expectedEstimatedMinutes: 52
+        ),
+        NaturalTimeParserSampleCase(
+            rawText: "Have dinner ready by six",
+            expectedCleanedTitle: "Have dinner ready",
+            expectedPreferredDayOfWeek: nil,
+            expectedWindowLabel: nil,
+            expectedEstimatedMinutes: 45
+        ),
+        NaturalTimeParserSampleCase(
+            rawText: "Clean up the kitchen tonight",
+            expectedCleanedTitle: "Clean up the kitchen",
+            expectedPreferredDayOfWeek: nil,
+            expectedWindowLabel: "Evening",
+            expectedEstimatedMinutes: 22
+        ),
+        NaturalTimeParserSampleCase(
+            rawText: "Start laundry",
+            expectedCleanedTitle: "Start laundry",
+            expectedPreferredDayOfWeek: nil,
+            expectedWindowLabel: nil,
+            expectedEstimatedMinutes: 5
         )
     ]
 
@@ -270,8 +357,18 @@ enum NaturalTimeParser {
         let flexibleWindowLabel = flexibleWindow(in: lowered)
         let recurrenceHint = recurrenceHint(in: lowered)
         let cleanedTitle = cleanTitle(from: rawText)
+        let durationBand = inferredDurationBand(from: cleanedTitle.isEmpty ? rawText : cleanedTitle)
         let estimatedMinutes = explicitEstimatedMinutes(in: lowered)
-            ?? inferredEstimatedMinutes(from: cleanedTitle.isEmpty ? rawText : cleanedTitle)
+            ?? durationBand?.midpoint
+
+        // Deadline: "by 6", "by six", "by 6:00 pm", "before noon"
+        let deadlineTime = deadline(in: lowered, basedOn: preferredDate ?? now, calendar: calendar)
+
+        // Family / outdoor / child context cap
+        let (cap, capReason) = endCap(for: lowered, calendar: calendar)
+
+        // After-work / after-dinner earliest-start floor
+        let earliestStart = earliestStartMinuteOfDay(in: lowered)
 
         return NaturalTimeHint(
             cleanedTitle: cleanedTitle.isEmpty ? "Untitled task" : cleanedTitle,
@@ -280,7 +377,13 @@ enum NaturalTimeParser {
             flexibleWindowLabel: flexibleWindowLabel,
             estimatedMinutes: estimatedMinutes,
             recurrenceHint: recurrenceHint,
-            isThisWeek: contains(#"\bthis\s+week\b"#, in: lowered)
+            isThisWeek: contains(#"\bthis\s+week\b"#, in: lowered),
+            deadlineTime: deadlineTime,
+            windowEndCap: cap,
+            windowEndCapReason: capReason,
+            durationLowerBoundMinutes: durationBand?.lower,
+            durationUpperBoundMinutes: durationBand?.upper,
+            earliestStartMinuteOfDay: earliestStart
         )
     }
 
@@ -290,9 +393,13 @@ enum NaturalTimeParser {
         switch normalized {
         case "morning", "this morning":
             return "Morning"
-        case "afternoon":
+        case "afternoon", "this afternoon":
             return "Afternoon"
-        case "evening", "evening window", "tonight", "night", "after dinner":
+        case "late afternoon":
+            return "Late afternoon"
+        case "early evening":
+            return "Early evening"
+        case "evening", "evening window", "tonight", "night", "after dinner", "this evening":
             return "Evening"
         case "after work":
             return "After work"
@@ -337,10 +444,18 @@ enum NaturalTimeParser {
     }
 
     private static func flexibleWindow(in text: String) -> String? {
+        // Most specific phrases first.
         if contains(#"\bbefore\s+bed\b|\bbedtime\b"#, in: text) { return "Before bed" }
-        if contains(#"\bafter\s+work\b"#, in: text) { return "After work" }
+        if contains(#"\bafter\s+(?:daycare|school|work)\b"#, in: text) {
+            // "after work" gets its own window; the others are late-afternoon.
+            if contains(#"\bafter\s+work\b"#, in: text) { return "After work" }
+            return "Late afternoon"
+        }
+        if contains(#"\blate\s+afternoon\b"#, in: text) { return "Late afternoon" }
+        if contains(#"\bearly\s+evening\b"#, in: text) { return "Early evening" }
         if contains(#"\bafter\s+dinner\b"#, in: text) { return "Evening" }
-        if contains(#"\btonight\b|\bevening\b|\bnight\b"#, in: text) { return "Evening" }
+        if contains(#"\btonight\b"#, in: text) { return "Evening" }
+        if contains(#"\bevening\b|\bnight\b"#, in: text) { return "Evening" }
         if contains(#"\bafternoon\b"#, in: text) { return "Afternoon" }
         if contains(#"\bmorning\b"#, in: text) { return "Morning" }
         return nil
@@ -356,12 +471,175 @@ enum NaturalTimeParser {
         return nil
     }
 
-    private static func inferredEstimatedMinutes(from text: String) -> Int? {
+    /// A duration band matched against task content. Returns lower / upper / midpoint.
+    /// We bias toward realism: short tasks stay short, long tasks aren't padded.
+    static func inferredDurationBand(from text: String) -> DurationBand? {
         let lowered = text.lowercased()
-        if contains(#"\btake\s+out\s+(?:the\s+)?trash\b|\btrash\b"#, in: lowered) { return 10 }
-        if contains(#"\bcall\b|\bphone\b"#, in: lowered) { return 10 }
-        if contains(#"\bquick\b|\bsmall\b"#, in: lowered) { return 5 }
+
+        // Trash / dishes / very small chores
+        if contains(#"\btake\s+out\s+(?:the\s+)?trash\b|\btrash\b"#, in: lowered) {
+            return DurationBand(lower: 5, upper: 10)
+        }
+        if contains(#"\b(?:put\s+away|stack|load)\s+(?:the\s+)?dish(es)?\b"#, in: lowered) {
+            return DurationBand(lower: 5, upper: 10)
+        }
+        if contains(#"\bstart\s+(?:a\s+|the\s+)?laundry\b|\bthrow\s+in\s+(?:a\s+)?load\b"#, in: lowered) {
+            return DurationBand(lower: 5, upper: 5)
+        }
+        // Calls and quick admin
+        if contains(#"\b(?:call|phone|ring|text|message)\s+(?:the\s+)?(?:dentist|doctor|vet)\b"#, in: lowered) {
+            return DurationBand(lower: 10, upper: 15)
+        }
+        if contains(#"\b(?:call|phone|ring)\b"#, in: lowered) {
+            return DurationBand(lower: 5, upper: 15)
+        }
+        if contains(#"\bpay\s+(?:the\s+)?(?:.+?\s+)?bill\b|\bpay\s+bills?\b"#, in: lowered) {
+            return DurationBand(lower: 5, upper: 10)
+        }
+        // Reading
+        if contains(#"\bread\s+(?:a\s+)?(?:little|bit|while|book|chapter)\b|\bread\s+before\s+bed\b"#, in: lowered) {
+            return DurationBand(lower: 10, upper: 20)
+        }
+        if contains(#"\bread\b"#, in: lowered) {
+            return DurationBand(lower: 10, upper: 30)
+        }
+        // Bath / kids
+        if contains(#"\b(?:give|do)\s+(?:.+?\s+)?(?:a\s+)?bath\b|\bbathe\b"#, in: lowered) {
+            return DurationBand(lower: 20, upper: 30)
+        }
+        // Errands
+        if contains(#"\bgrocery\s+shop|\bgo\s+grocery|\bgroceries\b|\bgrocery\s+shopping\b"#, in: lowered) {
+            return DurationBand(lower: 45, upper: 60)
+        }
+        if contains(#"\bpick\s+up\s+(?:the\s+)?groceries|\bpick\s+up\s+kids?\b"#, in: lowered) {
+            return DurationBand(lower: 30, upper: 45)
+        }
+        // Park / outdoor / family activities
+        if contains(#"\b(?:go\s+to\s+the\s+|at\s+the\s+|spend\s+time\s+at\s+the\s+)park\b|\bplayground\b"#, in: lowered) {
+            return DurationBand(lower: 45, upper: 90)
+        }
+        if contains(#"\b(?:walk|take\s+a\s+walk|go\s+for\s+a\s+walk)\b"#, in: lowered) {
+            return DurationBand(lower: 20, upper: 45)
+        }
+        // Cooking / dinner. "have dinner ready" / "dinner by six" are deadline-
+        // style phrases — we still want a realistic prep duration band.
+        if contains(#"\b(?:prepare|prep|make|cook|have)\s+(?:.+?\s+)?dinner\b|\bdinner\s+ready\b"#, in: lowered) {
+            return DurationBand(lower: 30, upper: 60)
+        }
+        if contains(#"\b(?:prepare|prep|make|cook)\s+(?:lunch|breakfast)\b"#, in: lowered) {
+            return DurationBand(lower: 15, upper: 30)
+        }
+        // Cleaning
+        if contains(#"\bgeneral\s+cleaning\b|\bclean(?:\s+up)?\s+(?:the\s+)?house\b"#, in: lowered) {
+            return DurationBand(lower: 30, upper: 60)
+        }
+        if contains(#"\bclean(?:\s+up)?\s+(?:the\s+)?kitchen\b|\bkitchen\s+reset\b|\btidy\s+(?:the\s+)?kitchen\b"#, in: lowered) {
+            return DurationBand(lower: 15, upper: 30)
+        }
+        if contains(#"\b(?:clean|tidy|organize)\b"#, in: lowered) {
+            return DurationBand(lower: 15, upper: 45)
+        }
+        // Generic "quick" / "small"
+        if contains(#"\bquick\b|\bsmall\b|\btiny\b"#, in: lowered) {
+            return DurationBand(lower: 5, upper: 10)
+        }
         return nil
+    }
+
+    /// Detects "by 6", "by six", "by 6:00 pm", "by noon", "before 7", "before noon".
+    /// Returns an absolute Date on the day implied by `basedOn`.
+    private static func deadline(in text: String, basedOn day: Date, calendar: Calendar) -> Date? {
+        if contains(#"\bby\s+noon\b|\bbefore\s+noon\b"#, in: text) {
+            return calendar.date(bySettingHour: 12, minute: 0, second: 0, of: day)
+        }
+        if contains(#"\bby\s+midnight\b"#, in: text) {
+            return calendar.date(bySettingHour: 23, minute: 59, second: 0, of: day)
+        }
+
+        // Numeric: "by 6", "by 6:30", "by 6 pm", "by 6:30pm", "by 18:30"
+        let numericPattern = #"\b(?:by|before)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b"#
+        if let match = firstMatchGroups(text: text, pattern: numericPattern) {
+            let hour = Int(match[1] ?? "0") ?? 0
+            let minute = Int(match[2] ?? "0") ?? 0
+            let meridiem = match[3]?.lowercased()
+            if let resolved = resolveHour(hour: hour, minute: minute, meridiem: meridiem) {
+                return calendar.date(bySettingHour: resolved.hour, minute: resolved.minute, second: 0, of: day)
+            }
+        }
+
+        // Word-numeral: "by six", "by seven", "by eight" — interpret as PM if no daypart.
+        let wordToHour: [String: Int] = [
+            "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10, "five": 5
+        ]
+        for (word, hr) in wordToHour {
+            if contains(#"\b(?:by|before)\s+\#(word)\b"#, in: text) {
+                // A bare "by six" almost always means 6 PM in conversational planning
+                // (food/dinner deadlines, pickup times, evening cutoffs).
+                let pmHour = hr < 12 ? hr + 12 : hr
+                return calendar.date(bySettingHour: pmHour, minute: 0, second: 0, of: day)
+            }
+        }
+        return nil
+    }
+
+    /// Soft cap on how late a task can be scheduled. Returns hour:minute as
+    /// DateComponents and a human-readable reason.
+    private static func endCap(for text: String, calendar: Calendar) -> (DateComponents?, String?) {
+        // Family / child context — Scarlett is the user's daughter; common kid names
+        // and explicit family signals all gate to ≤ 19:30.
+        let familyPattern = #"\b(?:scarlett|kiddo|kids?|baby|toddler|child|with\s+(?:my\s+)?(?:daughter|son|kid))\b"#
+        if contains(familyPattern, in: text) {
+            return (DateComponents(hour: 19, minute: 30), "child / family activity stays before 7:30 PM")
+        }
+        // Outdoor activity defaults
+        if contains(#"\b(?:park|playground|trail|hike|walk\s+the\s+dog)\b"#, in: text) {
+            return (DateComponents(hour: 19, minute: 30), "outdoor activity stays before 7:30 PM")
+        }
+        // Errand / store hours
+        if contains(#"\b(?:grocery|groceries|store|mall|errand|shopping|pharmacy|target|costco)\b"#, in: text) {
+            return (DateComponents(hour: 20, minute: 0), "errands stay before 8 PM")
+        }
+        return (nil, nil)
+    }
+
+    /// Earliest minute-of-day a task can start, based on natural cues.
+    /// "after work" → 17:00 → 17*60 = 1020. "after dinner" → 18:30 → 1110.
+    private static func earliestStartMinuteOfDay(in text: String) -> Int? {
+        if contains(#"\bafter\s+work\b"#, in: text) { return 17 * 60 }
+        if contains(#"\bafter\s+dinner\b"#, in: text) { return 18 * 60 + 30 }
+        if contains(#"\bafter\s+(?:daycare|school)\b"#, in: text) { return 16 * 60 }
+        if contains(#"\bearly\s+evening\b"#, in: text) { return 16 * 60 + 30 }
+        return nil
+    }
+
+    /// 12/24-hour sanity-check.
+    private static func resolveHour(hour: Int, minute: Int, meridiem: String?) -> (hour: Int, minute: Int)? {
+        guard (0...23).contains(hour), (0...59).contains(minute) else { return nil }
+        if let m = meridiem {
+            let h12 = hour % 12
+            return (m == "pm" ? h12 + 12 : h12, minute)
+        }
+        // No meridiem: bare 1-7 → assume PM (conversational); 8-11 → AM; 12+ → as-is
+        if hour >= 12 { return (hour, minute) }
+        if hour <= 7 { return (hour + 12, minute) }
+        return (hour, minute)
+    }
+
+    private static func firstMatchGroups(text: String, pattern: String) -> [String?]? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
+            return nil
+        }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, range: range) else { return nil }
+        var groups: [String?] = []
+        for i in 0..<match.numberOfRanges {
+            if let r = Range(match.range(at: i), in: text) {
+                groups.append(String(text[r]))
+            } else {
+                groups.append(nil)
+            }
+        }
+        return groups
     }
 
     private static func recurrenceHint(in text: String) -> String? {
@@ -386,9 +664,11 @@ enum NaturalTimeParser {
             #"\bevery\s+(?:day|week|morning|night|sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b"#,
             #"\bdaily\b|\bweekly\b"#,
             #"\b(?:on\s+)?(?:\#(weekdayList))(?:\s+(?:morning|afternoon|evening|night))?\b"#,
-            #"\b(?:in\s+the\s+|in\s+|during\s+the\s+|during\s+)?(?:this\s+)?(?:morning|afternoon|evening)\b"#,
-            #"\b(?:after\s+work|after\s+dinner|before\s+bed|bedtime)\b"#,
-            #"\bnight\b"#
+            #"\b(?:in\s+the\s+|in\s+|during\s+the\s+|during\s+)?(?:this\s+)?(?:early\s+|late\s+)?(?:morning|afternoon|evening)\b"#,
+            #"\b(?:after\s+work|after\s+dinner|after\s+daycare|after\s+school|before\s+bed|bedtime)\b"#,
+            #"\bnight\b"#,
+            // Deadline phrases — strip from titles, scheduler reads them separately.
+            #"\b(?:by|before)\s+(?:noon|midnight|\d{1,2}(?::\d{2})?\s*(?:am|pm)?|six|seven|eight|nine|ten|five)\b"#
         ]
 
         for pattern in cleanupPatterns {

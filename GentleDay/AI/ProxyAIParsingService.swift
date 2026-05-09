@@ -445,16 +445,36 @@ private struct ProxyParsedTask: Decodable {
             throw ProxyAIParsingServiceError.missingRequiredParsedTaskFields
         }
 
-        let duration = max(1, durationMinutes ?? context.userPreferences.defaultTaskDuration)
+        // Resilience layer: when the proxy returns a duration but it's the
+        // generic 60 min default applied to a clearly-short task, prefer the
+        // local band. This is the "make the app-side display resilient even
+        // when the proxy is wrong" requirement.
+        let band = NaturalTimeParser.inferredDurationBand(from: resolvedTitle)
+        let proxyDuration = durationMinutes
+        let duration: Int = {
+            if let p = proxyDuration {
+                if p == 60, let band, band.upper < 60 { return band.midpoint }
+                return max(1, p)
+            }
+            return band?.midpoint ?? max(1, context.userPreferences.defaultTaskDuration)
+        }()
+
+        let energy: EnergyLevel = {
+            if duration <= 10 { return .low }
+            if duration <= 30 { return .medium }
+            return .high
+        }()
 
         return AITaskCandidate(
             rawText: resolvedRawText,
             title: title,
             notes: Self.cleanedNotes(notes),
-            dueDate: dueDate ?? parsed.preferredDate,
-            startDate: startDate,
+            dueDate: dueDate ?? parsed.preferredDate ?? parsed.deadlineTime,
+            startDate: startDate ?? parsed.preferredDate,
             startTime: startTime,
             durationMinutes: duration,
+            durationLowerMinutes: band?.lower,
+            durationUpperMinutes: band?.upper,
             priority: priority ?? .normal,
             category: category ?? .other,
             reminderPreference: reminderPreference ?? context.userPreferences.defaultReminderStyle,
@@ -462,7 +482,9 @@ private struct ProxyParsedTask: Decodable {
             confidence: min(max(confidence ?? 0.72, 0), 1),
             clarificationNeeded: clarificationNeeded,
             tinyStep: tinyStep ?? TaskItem.makeTinyStep(from: resolvedRawText),
-            shrinkOptions: shrinkOptions ?? TaskItem.makeShrinkOptions(from: resolvedRawText, estimatedMinutes: duration)
+            shrinkOptions: shrinkOptions ?? TaskItem.makeShrinkOptions(from: resolvedRawText, estimatedMinutes: duration),
+            flexibleWindow: parsed.flexibleWindowLabel,
+            energyLevel: energy
         )
     }
 
@@ -833,9 +855,16 @@ private enum ProxyLegacyTaskSplitter {
         context: AIParsingContext
     ) -> AITaskCandidate {
         let hint = NaturalTimeParser.parse(rawText, now: context.currentDate)
-        let duration = max(1, hint.estimatedMinutes ?? inferredDuration(from: rawText) ?? context.userPreferences.defaultTaskDuration)
-        let dueDate = hint.preferredDate ?? fallbackDate
+        let band = NaturalTimeParser.inferredDurationBand(from: hint.cleanedTitle.isEmpty ? rawText : hint.cleanedTitle)
+        let duration = max(1, hint.estimatedMinutes ?? band?.midpoint ?? inferredDuration(from: rawText) ?? min(context.userPreferences.defaultTaskDuration, 25))
+        let dueDate = hint.preferredDate ?? hint.deadlineTime ?? fallbackDate
         let title = title(from: hint.cleanedTitle == "Untitled task" ? rawText : hint.cleanedTitle)
+
+        let energy: EnergyLevel = {
+            if duration <= 10 { return .low }
+            if duration <= 30 { return .medium }
+            return .high
+        }()
 
         return AITaskCandidate(
             rawText: rawText,
@@ -845,6 +874,8 @@ private enum ProxyLegacyTaskSplitter {
             startDate: dueDate,
             startTime: clockTime(in: rawText, baseDate: dueDate ?? context.currentDate),
             durationMinutes: duration,
+            durationLowerMinutes: band?.lower,
+            durationUpperMinutes: band?.upper,
             priority: dueDate.map { Calendar.current.isDateInToday($0) ? .important : .normal } ?? .normal,
             category: inferredCategory(from: rawText),
             reminderPreference: context.userPreferences.defaultReminderStyle,
@@ -852,7 +883,9 @@ private enum ProxyLegacyTaskSplitter {
             confidence: 0.66,
             clarificationNeeded: title == "Untitled task",
             tinyStep: TaskItem.makeTinyStep(from: rawText),
-            shrinkOptions: TaskItem.makeShrinkOptions(from: rawText, estimatedMinutes: duration)
+            shrinkOptions: TaskItem.makeShrinkOptions(from: rawText, estimatedMinutes: duration),
+            flexibleWindow: hint.flexibleWindowLabel,
+            energyLevel: energy
         )
     }
 

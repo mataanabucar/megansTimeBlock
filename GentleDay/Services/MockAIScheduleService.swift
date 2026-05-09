@@ -52,8 +52,8 @@ struct MockAIScheduleService: AIScheduleService {
         let notExplainedCount = unscheduledTaskIDs.filter { !specificallyExplainedIDs.contains($0) }.count
         if notExplainedCount > 0 {
             warnings.append(AIPlanWarning(
-                message: "I moved a few items forward so today stays realistic.",
-                suggestion: "They will stay safe in your inbox."
+                message: "I kept \(notExplainedCount) item\(notExplainedCount == 1 ? "" : "s") in your inbox so today stays realistic.",
+                suggestion: "They will stay safe there."
             ))
         }
 
@@ -69,9 +69,17 @@ struct MockAIScheduleService: AIScheduleService {
             updatedTaskStatuses: plannedTaskIDs.map { AIUpdatedTaskStatus(taskId: $0, status: .scheduled) },
             unscheduledTaskIDs: unscheduledTaskIDs,
             warnings: warnings,
-            friendlySummary: summary(for: planned, style: planningStyle, unscheduledCount: unscheduledTaskIDs.count)
+            friendlySummary: summary(
+                plannedCount: planned.count,
+                requestedCount: limitedTasks.count,
+                eligibleCount: selection.tasks.count,
+                unscheduledCount: unscheduledTaskIDs.count,
+                style: planningStyle
+            )
         )
     }
+
+    // MARK: - Sorting / scoring
 
     private func sortedCandidates(
         from tasks: [TaskItem],
@@ -98,6 +106,8 @@ struct MockAIScheduleService: AIScheduleService {
         var warnings: [AIPlanWarning]
     }
 
+    /// All the timing context derived from the task's natural-language text,
+    /// including the new deadline / cap / earliest-start hints.
     private struct TaskTimeContext {
         var cleanedTitle: String
         var preferredDate: Date?
@@ -105,6 +115,11 @@ struct MockAIScheduleService: AIScheduleService {
         var flexibleWindowLabel: String?
         var recurrenceHint: String?
         var isThisWeek: Bool
+        var deadlineTime: Date?
+        var windowEndCap: DateComponents?
+        var windowEndCapReason: String?
+        var earliestStartMinuteOfDay: Int?
+        var durationBand: DurationBand?
     }
 
     private func eligibleCandidates(
@@ -223,13 +238,26 @@ struct MockAIScheduleService: AIScheduleService {
 
     private func timeContext(for task: TaskItem) -> TaskTimeContext {
         let parsed = NaturalTimeParser.parse(task.rawText, now: task.createdAt)
+        let normalizedWindow = NaturalTimeParser.normalizedWindowLabel(task.flexibleWindow) ?? parsed.flexibleWindowLabel
+        let band: DurationBand? = {
+            if let lo = parsed.durationLowerBoundMinutes, let hi = parsed.durationUpperBoundMinutes {
+                return DurationBand(lower: lo, upper: hi)
+            }
+            return NaturalTimeParser.inferredDurationBand(from: task.title.isEmpty ? task.rawText : task.title)
+        }()
+
         return TaskTimeContext(
             cleanedTitle: parsed.cleanedTitle,
             preferredDate: task.dueDate ?? parsed.preferredDate,
             preferredDayOfWeek: task.preferredDayOfWeek ?? parsed.preferredDayOfWeek,
-            flexibleWindowLabel: NaturalTimeParser.normalizedWindowLabel(task.flexibleWindow) ?? parsed.flexibleWindowLabel,
+            flexibleWindowLabel: normalizedWindow,
             recurrenceHint: task.recurrenceRule ?? parsed.recurrenceHint,
-            isThisWeek: parsed.isThisWeek || task.flexibleWindow?.localizedCaseInsensitiveContains("this week") == true
+            isThisWeek: parsed.isThisWeek || task.flexibleWindow?.localizedCaseInsensitiveContains("this week") == true,
+            deadlineTime: parsed.deadlineTime,
+            windowEndCap: parsed.windowEndCap,
+            windowEndCapReason: parsed.windowEndCapReason,
+            earliestStartMinuteOfDay: parsed.earliestStartMinuteOfDay,
+            durationBand: band
         )
     }
 
@@ -287,6 +315,8 @@ struct MockAIScheduleService: AIScheduleService {
         }
     }
 
+    // MARK: - Block construction
+
     private func makeBlocks(
         from tasks: [TaskItem],
         preferences: UserPlanningPreferences,
@@ -301,7 +331,7 @@ struct MockAIScheduleService: AIScheduleService {
 
         for task in tasks {
             let context = timeContext(for: task)
-            let duration = adjustedDuration(for: task, style: style, preferences: preferences)
+            let duration = adjustedDuration(for: task, context: context, style: style, preferences: preferences)
             let candidateDays = candidateDays(
                 for: task,
                 context: context,
@@ -311,44 +341,77 @@ struct MockAIScheduleService: AIScheduleService {
                 calendar: calendar
             )
 
+            // Try each candidate day. Apply sanity-rule end caps and earliest-start
+            // floors per-day. Honor explicit deadlines first.
             for day in candidateDays {
-                let window = schedulingWindow(
+                let baseWindow = schedulingWindow(
                     for: task,
                     context: context,
                     on: day,
                     preferences: preferences,
                     calendar: calendar
                 )
+                let window = applySanityCaps(
+                    to: baseWindow,
+                    context: context,
+                    on: day,
+                    calendar: calendar
+                )
+
+                // Hard guard: if applying caps makes the window collapse, skip.
+                guard window.end > window.start else {
+                    debugLog(task: task, context: context, decision: "skipped (window collapsed after sanity caps)", duration: duration, window: window, finalStart: nil, finalEnd: nil)
+                    continue
+                }
+
+                // Branch 1: explicit deadline → schedule end at deadline.
+                if let deadline = effectiveDeadline(for: context, on: day, calendar: calendar),
+                   let proposedStart = calendar.date(byAdding: .minute, value: -duration, to: deadline),
+                   proposedStart >= window.start, deadline <= window.end {
+                    let block = makeBlock(
+                        task: task,
+                        context: context,
+                        start: proposedStart,
+                        end: deadline,
+                        window: window,
+                        range: range,
+                        style: style,
+                        preferences: preferences,
+                        calendar: calendar,
+                        deadlineDriven: true
+                    )
+                    blocks.append(block)
+                    bumpCursor(in: &cursorsByWindow, key: cursorKey(for: window, on: day, calendar: calendar), to: deadline, buffer: preferences.bufferMinutes, calendar: calendar)
+                    debugLog(task: task, context: context, decision: "deadline-driven", duration: duration, window: window, finalStart: proposedStart, finalEnd: deadline)
+                    break
+                }
+
+                // Branch 2: normal cursor placement inside the window.
                 let cursorKey = cursorKey(for: window, on: day, calendar: calendar)
                 let proposedStart = cursorsByWindow[cursorKey] ?? startCursor(in: window, on: day)
                 let start = max(proposedStart, window.start)
                 let end = calendar.date(byAdding: .minute, value: duration, to: start) ?? start
 
-                guard end <= window.end else { continue }
+                guard end <= window.end else {
+                    debugLog(task: task, context: context, decision: "did not fit window", duration: duration, window: window, finalStart: start, finalEnd: end)
+                    continue
+                }
 
-                let block = AIPlannedBlock(
-                    id: UUID(),
-                    taskId: task.id,
-                    title: task.title,
-                    startTime: start,
-                    endTime: end,
-                    flexibleWindowLabel: displayWindowLabel(
-                        for: window,
-                        start: start,
-                        context: context,
-                        range: range,
-                        calendar: calendar
-                    ),
-                    category: task.category,
-                    reminderStyle: reminderStyle(for: task, preferences: preferences),
-                    aiReason: reason(for: task, context: context, style: style)
+                let block = makeBlock(
+                    task: task,
+                    context: context,
+                    start: start,
+                    end: end,
+                    window: window,
+                    range: range,
+                    style: style,
+                    preferences: preferences,
+                    calendar: calendar,
+                    deadlineDriven: false
                 )
                 blocks.append(block)
-                cursorsByWindow[cursorKey] = calendar.date(
-                    byAdding: .minute,
-                    value: duration + preferences.bufferMinutes,
-                    to: start
-                ) ?? end
+                bumpCursor(in: &cursorsByWindow, key: cursorKey, to: end, buffer: preferences.bufferMinutes, calendar: calendar)
+                debugLog(task: task, context: context, decision: "placed", duration: duration, window: window, finalStart: start, finalEnd: end)
                 break
             }
         }
@@ -356,16 +419,100 @@ struct MockAIScheduleService: AIScheduleService {
         return blocks.sorted { $0.startTime < $1.startTime }
     }
 
+    private func makeBlock(
+        task: TaskItem,
+        context: TaskTimeContext,
+        start: Date,
+        end: Date,
+        window: SchedulingWindow,
+        range: ScheduleRange,
+        style: PlanningStyle,
+        preferences: UserPlanningPreferences,
+        calendar: Calendar,
+        deadlineDriven: Bool
+    ) -> AIPlannedBlock {
+        AIPlannedBlock(
+            id: UUID(),
+            taskId: task.id,
+            title: task.title,
+            startTime: start,
+            endTime: end,
+            flexibleWindowLabel: displayWindowLabel(
+                for: window,
+                start: start,
+                context: context,
+                range: range,
+                calendar: calendar
+            ),
+            category: task.category,
+            reminderStyle: reminderStyle(for: task, preferences: preferences),
+            aiReason: reason(for: task, context: context, style: style, deadlineDriven: deadlineDriven)
+        )
+    }
+
+    private func bumpCursor(in cursors: inout [String: Date], key: String, to end: Date, buffer: Int, calendar: Calendar) {
+        cursors[key] = calendar.date(byAdding: .minute, value: buffer, to: end) ?? end
+    }
+
+    /// Effective deadline: if the parser found one, project it onto `day`.
+    private func effectiveDeadline(for context: TaskTimeContext, on day: Date, calendar: Calendar) -> Date? {
+        guard let deadline = context.deadlineTime else { return nil }
+        let comps = calendar.dateComponents([.hour, .minute], from: deadline)
+        return calendar.date(bySettingHour: comps.hour ?? 18, minute: comps.minute ?? 0, second: 0, of: day)
+    }
+
+    /// Apply windowEndCap and earliestStartMinuteOfDay constraints to the
+    /// base window. Either may shrink the window; if it collapses entirely,
+    /// the caller skips the task for this day.
+    private func applySanityCaps(
+        to window: SchedulingWindow,
+        context: TaskTimeContext,
+        on day: Date,
+        calendar: Calendar
+    ) -> SchedulingWindow {
+        var start = window.start
+        var end = window.end
+
+        if let cap = context.windowEndCap {
+            let capDate = calendar.date(bySettingHour: cap.hour ?? 23, minute: cap.minute ?? 59, second: 0, of: day) ?? end
+            end = min(end, capDate)
+        }
+        if let earliest = context.earliestStartMinuteOfDay {
+            let h = earliest / 60
+            let m = earliest % 60
+            let earliestDate = calendar.date(bySettingHour: h, minute: m, second: 0, of: day) ?? start
+            start = max(start, earliestDate)
+        }
+        return SchedulingWindow(label: window.label, start: start, end: max(end, start))
+    }
+
+    // MARK: - Duration
+
     private func adjustedDuration(
         for task: TaskItem,
+        context: TaskTimeContext,
         style: PlanningStyle,
         preferences: UserPlanningPreferences
     ) -> Int {
-        let base = task.estimatedMinutes > 0 ? task.estimatedMinutes : preferences.defaultTaskDuration
+        let stored = task.estimatedMinutes
+        // The TaskItem may have been saved with the user's 60-min default by
+        // older code paths. If a band exists and the stored value looks like
+        // the generic default, prefer the band's midpoint.
+        let baseFromBand = context.durationBand?.midpoint
+        let suspectsDefault = (stored == preferences.defaultTaskDuration && baseFromBand != nil)
+        let base = suspectsDefault ? (baseFromBand ?? stored) : (stored > 0 ? stored : preferences.defaultTaskDuration)
+
         switch style {
         case .minimumDay:
+            // Minimum Day prefers the band's lower bound when known.
+            if let lower = context.durationBand?.lower {
+                return min(base, max(5, lower))
+            }
             return min(base, 20)
         case .lightDay:
+            if let lower = context.durationBand?.lower {
+                return min(base, max(10, lower))
+            }
             return min(base, 30)
         default:
             return base
@@ -406,6 +553,9 @@ struct MockAIScheduleService: AIScheduleService {
         }
     }
 
+    /// Resolve the SchedulingWindow for a task. Recognizes the new
+    /// "Early evening" and "Late afternoon" labels in addition to the
+    /// existing set.
     private func schedulingWindow(
         for task: TaskItem,
         context: TaskTimeContext,
@@ -419,8 +569,11 @@ struct MockAIScheduleService: AIScheduleService {
         let wake = DateFormatting.combine(day: day, time: preferences.wakeTime)
         let sleep = DateFormatting.combine(day: day, time: preferences.sleepTime)
         let noon = clock(hour: 12, minute: 0, on: day, calendar: calendar)
+        let threePM = clock(hour: 15, minute: 0, on: day, calendar: calendar)
+        let fourThirtyPM = clock(hour: 16, minute: 30, on: day, calendar: calendar)
         let fivePM = clock(hour: 17, minute: 0, on: day, calendar: calendar)
         let sixThirtyPM = clock(hour: 18, minute: 30, on: day, calendar: calendar)
+        let sevenThirtyPM = clock(hour: 19, minute: 30, on: day, calendar: calendar)
         let eveningStart = max(DateFormatting.combine(day: day, time: preferences.eveningStartTime), sixThirtyPM)
 
         switch label {
@@ -432,6 +585,12 @@ struct MockAIScheduleService: AIScheduleService {
             let end = minDateGreaterThanStart([DateFormatting.combine(day: day, time: preferences.eveningStartTime), fivePM], start: noon)
                 ?? fivePM
             return SchedulingWindow(label: "Afternoon", start: noon, end: end)
+
+        case "Late afternoon":
+            return SchedulingWindow(label: "Late afternoon", start: threePM, end: sixThirtyPM)
+
+        case "Early evening":
+            return SchedulingWindow(label: "Early evening", start: fourThirtyPM, end: sevenThirtyPM)
 
         case "Evening":
             let end = defaultEnd > eveningStart ? defaultEnd : sleep
@@ -528,7 +687,18 @@ struct MockAIScheduleService: AIScheduleService {
         return preferences.defaultReminderStyle == .alarmCandidate ? .gentle : preferences.defaultReminderStyle
     }
 
-    private func reason(for task: TaskItem, context: TaskTimeContext, style: PlanningStyle) -> String {
+    private func reason(
+        for task: TaskItem,
+        context: TaskTimeContext,
+        style: PlanningStyle,
+        deadlineDriven: Bool
+    ) -> String {
+        if deadlineDriven {
+            return "I scheduled this to finish by your deadline."
+        }
+        if let capReason = context.windowEndCapReason {
+            return "I matched the timing hint and \(capReason)."
+        }
         if style == .minimumDay {
             return "This fits a small, useful day."
         }
@@ -580,20 +750,68 @@ struct MockAIScheduleService: AIScheduleService {
         return calendar.date(bySetting: .second, value: 0, of: rounded) ?? rounded
     }
 
-    private func summary(for blocks: [AIPlannedBlock], style: PlanningStyle, unscheduledCount: Int) -> String {
-        if blocks.isEmpty {
-            return "No plan was added. Your inbox is still safe."
+    // MARK: - Honest summary
+
+    /// Tells the truth about how many things actually got placed. Earlier
+    /// versions said "I made 4 gentle blocks" even when only 2 were placed.
+    private func summary(
+        plannedCount: Int,
+        requestedCount: Int,
+        eligibleCount: Int,
+        unscheduledCount: Int,
+        style: PlanningStyle
+    ) -> String {
+        if plannedCount == 0 {
+            return unscheduledCount > 0
+                ? "I kept everything in your inbox so you can pick what feels right."
+                : "No plan was added. Your inbox is still safe."
         }
 
-        let blockWord = blocks.count == 1 ? "block" : "blocks"
+        let blockWord = plannedCount == 1 ? "block" : "blocks"
+        var headline: String
         if style == .minimumDay {
-            return "I made a Minimum Day with \(blocks.count) \(blockWord). This is enough for a restart."
+            headline = "I made a Minimum Day with \(plannedCount) \(blockWord). This is enough for a restart."
+        } else if plannedCount < requestedCount {
+            // Some tasks didn't fit even after we said "yes" to scheduling them.
+            let dropped = requestedCount - plannedCount
+            headline = "I added \(plannedCount) \(blockWord) and kept \(dropped) for later so the day stays realistic."
+        } else if unscheduledCount > 0 {
+            headline = "I added \(plannedCount) \(blockWord) and kept \(unscheduledCount) item\(unscheduledCount == 1 ? "" : "s") in your inbox."
+        } else {
+            headline = "I added \(plannedCount) \(blockWord) with buffer space."
         }
 
-        if unscheduledCount > 0 {
-            return "I made \(blocks.count) gentle \(blockWord) and kept \(unscheduledCount) item(s) for later."
-        }
+        return headline
+    }
 
-        return "I made \(blocks.count) gentle \(blockWord) with buffer space."
+    // MARK: - Debug logging
+
+    private func debugLog(
+        task: TaskItem,
+        context: TaskTimeContext,
+        decision: String,
+        duration: Int,
+        window: SchedulingWindow,
+        finalStart: Date?,
+        finalEnd: Date?
+    ) {
+        #if DEBUG
+        let timeFormatter = DateFormatting.shortTime
+        let startStr = finalStart.map(timeFormatter.string(from:)) ?? "—"
+        let endStr = finalEnd.map(timeFormatter.string(from:)) ?? "—"
+        let bandStr = context.durationBand.map { "\($0.lower)–\($0.upper)" } ?? "—"
+        let deadlineStr = context.deadlineTime.map(timeFormatter.string(from:)) ?? "—"
+        let capStr = context.windowEndCap.map { c in "\(c.hour ?? 0):\(String(format: "%02d", c.minute ?? 0))" } ?? "—"
+        print("""
+        GentlePlan assignment:
+          task=\"\(task.title)\"
+          decision=\(decision)
+          window=\(window.label) [\(timeFormatter.string(from: window.start))–\(timeFormatter.string(from: window.end))]
+          duration=\(duration) min (band \(bandStr))
+          deadline=\(deadlineStr)
+          endCap=\(capStr)\(context.windowEndCapReason.map { " (\($0))" } ?? "")
+          finalWindow=\(startStr) to \(endStr)
+        """)
+        #endif
     }
 }

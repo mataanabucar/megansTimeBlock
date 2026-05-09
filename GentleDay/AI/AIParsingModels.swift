@@ -78,6 +78,11 @@ struct AITaskCandidate: Decodable, Hashable, Identifiable {
     var startDate: Date?
     var startTime: Date?
     var durationMinutes: Int
+    /// Lower bound of the inferred duration band (e.g. 5 for "take out trash").
+    /// Optional because older parser responses won't have it.
+    var durationLowerMinutes: Int?
+    /// Upper bound of the inferred duration band (e.g. 10 for "take out trash").
+    var durationUpperMinutes: Int?
     var priority: PriorityLevel
     var category: TaskCategory
     var reminderPreference: ReminderStyle?
@@ -86,6 +91,12 @@ struct AITaskCandidate: Decodable, Hashable, Identifiable {
     var clarificationNeeded: Bool
     var tinyStep: String?
     var shrinkOptions: [String]
+    /// Natural-language flexible window — Morning / Afternoon / Late afternoon /
+    /// Early evening / After work / Evening / Before bed. The preview renders
+    /// this combined with the date (e.g. "Tomorrow evening").
+    var flexibleWindow: String?
+    /// Energy hint surfaced from the parser.
+    var energyLevel: EnergyLevel?
 
     var id: String {
         [
@@ -97,37 +108,117 @@ struct AITaskCandidate: Decodable, Hashable, Identifiable {
         ].joined(separator: "|")
     }
 
+    /// Legacy single-line description. Kept for compatibility with any older
+    /// callers; new UI should use `formattedScheduleText` instead.
     var whenDescription: String {
+        formattedScheduleText
+    }
+
+    // MARK: - Formatting helpers used by the AI Preview card
+
+    /// Natural phrasing combining date and window. Examples:
+    /// "Tomorrow evening" — preferredDate=tomorrow + window=Evening
+    /// "This afternoon" — preferredDate=today + window=Afternoon
+    /// "Tomorrow" — date only
+    /// "Evening" — window only
+    /// "Today, around 8:00 PM" — explicit startTime
+    /// "Anytime" — nothing usable
+    var formattedScheduleText: String {
+        let calendar = Calendar.current
         let candidateDate = dueDate ?? startDate ?? startTime
-        guard let candidateDate else { return "Anytime" }
+        let normalizedWindow = NaturalTimeParser.normalizedWindowLabel(flexibleWindow)
 
-        var parts: [String] = []
-        if Calendar.current.isDateInToday(candidateDate) {
-            parts.append("Today")
-        } else if Calendar.current.isDateInTomorrow(candidateDate) {
-            parts.append("Tomorrow")
-        } else {
-            parts.append(DateFormatting.shortDate.string(from: candidateDate))
+        let datePart: String? = candidateDate.flatMap { date in
+            if calendar.isDateInToday(date) {
+                return normalizedWindow != nil ? "This" : "Today"
+            } else if calendar.isDateInTomorrow(date) {
+                return "Tomorrow"
+            } else {
+                return DateFormatting.shortDate.string(from: date)
+            }
+        }
+        let windowPart: String? = normalizedWindow.map { window in
+            // "This morning" / "This afternoon" / "Tomorrow evening" — all lowercase suffix.
+            window.lowercased()
         }
 
-        if startTime != nil {
-            parts.append(DateFormatting.shortTime.string(from: candidateDate))
+        // Explicit clock time wins when present.
+        if let candidateDate, let _ = startTime {
+            let timeStr = DateFormatting.shortTime.string(from: candidateDate)
+            if let datePart {
+                return "\(datePart), around \(timeStr)"
+            }
+            return "Around \(timeStr)"
         }
 
-        return parts.joined(separator: " ")
+        switch (datePart, windowPart) {
+        case let (date?, window?):
+            return "\(date) \(window)"
+        case let (date?, nil):
+            return date
+        case let (nil, window?):
+            // Capitalize the first letter when window stands alone.
+            return window.prefix(1).uppercased() + window.dropFirst()
+        case (nil, nil):
+            return "Anytime"
+        }
+    }
+
+    /// "5 to 10 min" / "45 min" / "1 hr 30 min" — uses the duration band when
+    /// available, falls back to the single midpoint.
+    var formattedDurationText: String {
+        if let lo = durationLowerMinutes, let hi = durationUpperMinutes, lo != hi {
+            return "\(lo) to \(hi) min"
+        }
+        let m = max(1, durationMinutes)
+        if m >= 60 {
+            let hours = m / 60
+            let rest = m % 60
+            return rest == 0 ? "\(hours) hr" : "\(hours) hr \(rest) min"
+        }
+        return "\(m) min"
+    }
+
+    var formattedCategoryText: String {
+        category.title
+    }
+
+    var formattedEnergyText: String? {
+        guard let energyLevel else { return nil }
+        return "\(energyLevel.title) energy".replacingOccurrences(of: " energy energy", with: " energy")
+    }
+
+    /// Subtle text for the AI Preview card. Returns:
+    /// - "May need review" when clarificationNeeded
+    /// - "Lower confidence" for confidence < 0.55
+    /// - "Looks good" otherwise (caller may choose to hide this)
+    var formattedConfidenceText: String {
+        if clarificationNeeded { return "May need review" }
+        if confidence < 0.55 { return "Lower confidence" }
+        return "Looks good"
+    }
+
+    /// Whether to draw attention to the confidence/review state. Used to
+    /// decide if a callout banner should appear.
+    var needsReviewCallout: Bool {
+        clarificationNeeded || confidence < 0.55
     }
 
     func makeTaskItem(source: CaptureSource = .typed, createdAt: Date = Date()) -> TaskItem {
-        TaskItem(
+        // Window label is the primary `flexibleWindow` on TaskItem so the
+        // scheduler / Today view group it correctly. We do NOT stuff a clock
+        // time string into that field anymore.
+        let resolvedWindow = NaturalTimeParser.normalizedWindowLabel(flexibleWindow)
+        return TaskItem(
             rawText: rawText,
             title: title,
             notes: notes ?? "",
             category: category,
             priority: priority,
-            energyLevel: durationMinutes <= 10 ? .low : .any,
+            energyLevel: energyLevel ?? (durationMinutes <= 10 ? .low : .any),
             estimatedMinutes: max(1, durationMinutes),
             dueDate: dueDate ?? startDate ?? startTime,
-            flexibleWindow: startTime.map { DateFormatting.shortTime.string(from: $0) },
+            flexibleWindow: resolvedWindow,
             isRecurring: recurrence?.nilIfBlank != nil,
             recurrenceRule: recurrence,
             source: source,
