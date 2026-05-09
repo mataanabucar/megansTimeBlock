@@ -210,3 +210,28 @@ enum CaptureSource: String, Codable, CaseIterable, Identifiable, Hashable {
 
     var id: String { rawValue }
 }
+
+enum AIParsingMode: String, Codable, CaseIterable, Identifiable, Hashable {
+    case mockAI
+    case openAIProxy
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .mockAI:
+            return "Mock AI"
+        case .openAIProxy:
+            return "OpenAI via Proxy"
+        }
+    }
+
+    var friendlyDescription: String {
+        switch self {
+        case .mockAI:
+            return "Local testing mode. No internet or backend needed."
+        case .openAIProxy:
+            return "Hosted Vercel backend mode for real AI parsing."
+        }
+    }
+}

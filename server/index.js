@@ -3,12 +3,15 @@ import "dotenv/config";
 import cors from "cors";
 import express from "express";
 import fs from "fs/promises";
+import { randomUUID } from "crypto";
 import { createReadStream } from "fs";
 import multer from "multer";
 import OpenAI from "openai";
 import { toFile } from "openai/uploads";
 
 const port = Number(process.env.PORT || 8787);
+const DEBUG_AI_PROXY = process.env.DEBUG_AI_PROXY !== "false";
+const parseTaskEndpoint = "/api/parse-task";
 const upload = multer({
   dest: "uploads/",
   limits: {
@@ -100,13 +103,64 @@ app.get("/", (_request, response) => {
       "Gentle Day Voice API is running.",
       "",
       "Health check: GET /health",
-      "Voice dump endpoint: POST /api/voice-dump",
-      "Text dump endpoint: POST /api/voice-dump-text"
+      "Task parsing endpoint: POST /api/parse-task",
+      "Audio upload fallback: POST /api/voice-dump",
+      "Deprecated text endpoint: POST /api/voice-dump-text"
     ].join("\n"));
 });
 
 app.get("/health", (_request, response) => {
   response.json({ ok: true });
+});
+
+app.post("/api/parse-task", async (request, response) => {
+  const requestId = randomUUID();
+
+  if (!process.env.OPENAI_API_KEY) {
+    response.status(500).json({ error: "OPENAI_API_KEY is not configured on the server." });
+    return;
+  }
+
+  try {
+    const transcript = cleanText(request.body?.rawText || request.body?.text || request.body?.transcript || "");
+    logAIProxyDebug("incoming request", {
+      requestId,
+      rawTextPreview: previewText(transcript),
+      currentDate: sanitizeLogValue(request.body?.currentDate),
+      timezone: sanitizeLogValue(request.body?.timezone),
+      locale: sanitizeLogValue(request.body?.locale)
+    });
+
+    if (!transcript) {
+      response.status(400).json({ error: "Send text in the 'rawText' field." });
+      return;
+    }
+
+    const { parsed, openaiResponseId } = await parseVoiceDump(transcript);
+    logAIProxyDebug("openai response", {
+      requestId,
+      openaiResponseId
+    });
+
+    const payload = makeTaskParseResponse(parsed, {
+      requestId,
+      openaiResponseId,
+      endpoint: parseTaskEndpoint
+    });
+    logAIProxyDebug("final response json", payload);
+    response.json(payload);
+  } catch (error) {
+    console.error("[AI_PROXY_ERROR]", { requestId, message: error?.message || "Task parsing failed." });
+    response.status(500).json({
+      error: error?.message || "Task parsing failed.",
+      debug: DEBUG_AI_PROXY
+        ? {
+          requestId,
+          endpoint: parseTaskEndpoint
+        }
+        : undefined
+    });
+  }
 });
 
 app.post("/api/voice-dump-text", async (request, response) => {
@@ -116,19 +170,22 @@ app.post("/api/voice-dump-text", async (request, response) => {
   }
 
   try {
-    const transcript = cleanText(request.body?.text || request.body?.transcript || "");
+    const transcript = cleanText(request.body?.rawText || request.body?.text || request.body?.transcript || "");
 
     if (!transcript) {
-      response.status(400).json({ error: "Send text in the 'text' field." });
+      response.status(400).json({ error: "Send text in the 'rawText' field." });
       return;
     }
 
-    const parsed = await parseVoiceDump(transcript);
+    const { parsed } = await parseVoiceDump(transcript);
     response.json(parsed);
   } catch (error) {
-    console.error(error);
+    console.error("[AI_PROXY_ERROR]", {
+      endpoint: "/api/voice-dump-text",
+      message: error?.message || "Legacy voice text parsing failed."
+    });
     response.status(500).json({
-      error: error?.message || "Voice dump parsing failed."
+      error: error?.message || "Legacy voice text parsing failed."
     });
   }
 });
@@ -156,10 +213,13 @@ app.post("/api/voice-dump", upload.single("audio"), async (request, response) =>
       return;
     }
 
-    const parsed = await parseVoiceDump(transcript);
+    const { parsed } = await parseVoiceDump(transcript);
     response.json(parsed);
   } catch (error) {
-    console.error(error);
+    console.error("[AI_PROXY_ERROR]", {
+      endpoint: "/api/voice-dump",
+      message: error?.message || "Voice dump parsing failed."
+    });
     response.status(500).json({
       error: error?.message || "Voice dump parsing failed."
     });
@@ -219,11 +279,60 @@ async function parseVoiceDump(transcript) {
     }
   });
 
-  return JSON.parse(result.output_text);
+  return {
+    parsed: JSON.parse(result.output_text),
+    openaiResponseId: result.id
+  };
+}
+
+function makeTaskParseResponse(parsed, debugMetadata) {
+  const tasks = Array.isArray(parsed.tasks) ? parsed.tasks : [];
+  const needsReview = Array.isArray(parsed.needs_review) ? parsed.needs_review : [];
+
+  const response = {
+    originalText: typeof parsed.transcript === "string" ? parsed.transcript : undefined,
+    tasks,
+    parsed: tasks[0] ?? null,
+    warnings: needsReview.map((message) => ({
+      code: "needs_review",
+      message
+    })),
+    friendlySummary: tasks.length === 1
+      ? `I organized "${tasks[0].title}" for review.`
+      : `I organized ${tasks.length} tasks for review.`,
+    needsReview: needsReview.length > 0
+  };
+
+  if (DEBUG_AI_PROXY && debugMetadata) {
+    response.debug = debugMetadata;
+  }
+
+  return response;
 }
 
 function cleanText(value) {
   return String(value || "").trim();
+}
+
+function previewText(value, maxLength = 120) {
+  const text = cleanText(value).replace(/\s+/g, " ");
+  return text.length > maxLength ? text.slice(0, maxLength) : text;
+}
+
+function sanitizeLogValue(value) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  return String(value);
+}
+
+function logAIProxyDebug(label, value) {
+  if (!DEBUG_AI_PROXY) {
+    return;
+  }
+
+  console.log(`[AI_PROXY_DEBUG] ${label}`, JSON.stringify(value, null, 2));
 }
 
 function supportedAudioFileName(uploadedFile) {
@@ -269,5 +378,5 @@ function extensionForMimeType(mimeType) {
 }
 
 app.listen(port, () => {
-  console.log(`Gentle Day Voice API listening on http://localhost:${port}`);
+  console.log(`Gentle Day local development AI proxy listening on port ${port}`);
 });

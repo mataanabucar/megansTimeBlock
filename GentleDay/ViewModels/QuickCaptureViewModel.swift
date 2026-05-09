@@ -51,17 +51,14 @@ final class QuickCaptureViewModel {
     var source: CaptureSource = .typed
     var voiceMessage: String?
     var isListening = false
-    var voiceAutoSaveRequestID: UUID?
 
     @ObservationIgnored private let liveSpeechTranscriber = LiveSpeechTranscriber()
     @ObservationIgnored private let voiceDumpService = VoiceDumpAPIService()
     @ObservationIgnored private var textBeforeVoiceCapture = ""
     @ObservationIgnored private var recognizedVoiceText = ""
-    @ObservationIgnored private var parsedVoiceTasks: [ParsedVoiceTask] = []
-    @ObservationIgnored private var needsReview: [String] = []
 
     var canSave: Bool {
-        !rawText.trimmedForStorage.isEmpty || !parsedVoiceTasks.isEmpty
+        !rawText.trimmedForStorage.isEmpty
     }
 
     var voiceButtonTitle: String {
@@ -78,9 +75,6 @@ final class QuickCaptureViewModel {
     }
 
     private var pendingTaskCount: Int {
-        if !parsedVoiceTasks.isEmpty {
-            return parsedVoiceTasks.count
-        }
         return Self.captureItems(from: rawText).count
     }
 
@@ -92,14 +86,6 @@ final class QuickCaptureViewModel {
         }
     }
 
-    func toggleVoiceCapture() async {
-        if isListening {
-            await stopVoiceCaptureAndParse(autosaves: true)
-        } else {
-            await startVoiceCapture()
-        }
-    }
-
     func makeTasks() -> [TaskItem] {
         let selectedCategory = selectedChips.compactMap(\.category).first
         let selectedMinutes = selectedChips.compactMap(\.minutes).first
@@ -107,26 +93,6 @@ final class QuickCaptureViewModel {
             Calendar.current.date(byAdding: .day, value: offset, to: Date())
         }
         let flexibleWindow = selectedChips.compactMap(\.flexibleWindow).first
-
-        if !parsedVoiceTasks.isEmpty {
-            return parsedVoiceTasks.map { parsedTask in
-                let taskText = parsedTask.title.trimmedForStorage
-                let originalPhrase = parsedTask.originalPhrase.trimmedForStorage
-                let cleanedTitle = NaturalTimeParser.parse(taskText).cleanedTitle
-                let displayTitle = cleanedTitle == "Untitled task" ? taskText : cleanedTitle
-                return TaskItem(
-                    rawText: originalPhrase.isEmpty ? taskText : originalPhrase,
-                    title: displayTitle,
-                    category: selectedCategory ?? parsedTask.category,
-                    priority: dueDate.map { Calendar.current.isDateInToday($0) ? .important : .normal } ?? .normal,
-                    energyLevel: .any,
-                    estimatedMinutes: selectedMinutes ?? parsedTask.estimatedMinutes,
-                    dueDate: dueDate,
-                    flexibleWindow: flexibleWindow,
-                    source: .voice
-                )
-            }
-        }
 
         let taskTexts = Self.captureItems(from: rawText)
         guard !taskTexts.isEmpty else { return [] }
@@ -151,10 +117,7 @@ final class QuickCaptureViewModel {
         selectedChips = []
         source = .typed
         voiceMessage = nil
-        voiceAutoSaveRequestID = nil
         recognizedVoiceText = ""
-        parsedVoiceTasks = []
-        needsReview = []
     }
 
     func stopVoiceCapture() {
@@ -277,11 +240,9 @@ final class QuickCaptureViewModel {
         return 15
     }
 
-    private func startVoiceCapture() async {
+    func startVoiceCapture() async {
         textBeforeVoiceCapture = rawText.trimmedForStorage
         recognizedVoiceText = ""
-        parsedVoiceTasks = []
-        needsReview = []
         voiceMessage = "Preparing speech..."
 
         do {
@@ -305,8 +266,12 @@ final class QuickCaptureViewModel {
         }
     }
 
-    private func stopVoiceCaptureAndParse(autosaves: Bool) async {
-        guard isListening else { return }
+    func stopVoiceCaptureAndParseForPreview(
+        preferences: UserPlanningPreferences?,
+        existingTasks: [TaskItem],
+        existingScheduleBlocks: [ScheduleBlock]
+    ) async throws -> AITaskParseResponse? {
+        guard isListening else { return nil }
         isListening = false
 
         do {
@@ -319,28 +284,37 @@ final class QuickCaptureViewModel {
             let transcript = rawText.trimmedForStorage
             guard !transcript.isEmpty else {
                 voiceMessage = "No speech was recognized. Check Speech Recognition access in Settings."
-                return
+                return nil
             }
 
             voiceMessage = "Parsing tasks..."
-            let response = try await voiceDumpService.parseTextDump(transcript)
+            guard let preferences else {
+                voiceMessage = "Settings are still loading. Please try again in a moment."
+                return nil
+            }
 
-            rawText = response.transcript
-            parsedVoiceTasks = response.tasks
-            needsReview = response.needsReview
+            guard preferences.enableAIParsing else {
+                voiceMessage = AIParsingFeatureError.disabled.localizedDescription
+                return nil
+            }
+
+            let response = try await voiceDumpService.parseTextDump(
+                transcript,
+                preferences: preferences,
+                existingTasks: existingTasks,
+                existingScheduleBlocks: existingScheduleBlocks
+            )
+
+            rawText = transcript
             source = .voice
             recognizedVoiceText = ""
+            voiceMessage = response.friendlySummary
 
-            if parsedVoiceTasks.isEmpty {
-                voiceMessage = needsReview.isEmpty ? "No tasks found." : "Needs review: \(needsReview.joined(separator: ", "))"
-            } else if autosaves {
-                requestVoiceAutoSave()
-            } else {
-                voiceMessage = readyMessage()
-            }
+            return response
         } catch {
             liveSpeechTranscriber.cancel()
             voiceMessage = error.localizedDescription
+            throw error
         }
     }
 
@@ -350,42 +324,8 @@ final class QuickCaptureViewModel {
             .joined(separator: "\n")
     }
 
-    private func requestVoiceAutoSave() {
-        guard pendingTaskCount > 0 else { return }
-        voiceMessage = pendingTaskCount > 1 ? "Saving \(pendingTaskCount) items..." : "Saving item..."
-        voiceAutoSaveRequestID = UUID()
-    }
-
     private func readyMessage() -> String {
         pendingTaskCount > 1 ? "\(pendingTaskCount) items ready for inbox." : "Voice capture added."
-    }
-}
-
-struct VoiceDumpParseResponse: Decodable {
-    var transcript: String
-    var tasks: [ParsedVoiceTask]
-    var needsReview: [String]
-
-    enum CodingKeys: String, CodingKey {
-        case transcript
-        case tasks
-        case needsReview = "needs_review"
-    }
-}
-
-struct ParsedVoiceTask: Decodable {
-    var title: String
-    var category: TaskCategory
-    var originalPhrase: String
-    var estimatedMinutes: Int
-    var confidence: Double
-
-    enum CodingKeys: String, CodingKey {
-        case title
-        case category
-        case originalPhrase = "original_phrase"
-        case estimatedMinutes = "estimated_minutes"
-        case confidence
     }
 }
 
@@ -667,103 +607,24 @@ final class VoiceDumpRecorder {
 }
 
 struct VoiceDumpAPIService {
-    static var defaultBaseURL: URL {
-        let configuredURL = Bundle.main.object(forInfoDictionaryKey: "GentleDayVoiceAPIBaseURL") as? String
-        return URL(string: configuredURL ?? "http://localhost:8787")!
-    }
-
-    var baseURL: URL = VoiceDumpAPIService.defaultBaseURL
-
-    func parseTextDump(_ text: String) async throws -> VoiceDumpParseResponse {
-        let endpoint = baseURL.appendingPathComponent("api/voice-dump-text")
-        var request = URLRequest(url: endpoint)
-
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 45
-        request.httpBody = try JSONEncoder().encode(VoiceDumpTextRequest(text: text))
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        return try decodeParseResponse(data: data, response: response)
-    }
-
-    func parseVoiceDump(audioURL: URL, typedText: String) async throws -> VoiceDumpParseResponse {
-        let endpoint = baseURL.appendingPathComponent("api/voice-dump")
-        var request = URLRequest(url: endpoint)
-        let boundary = "Boundary-\(UUID().uuidString)"
-
-        request.httpMethod = "POST"
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 90
-
-        let body = try makeMultipartBody(
-            boundary: boundary,
-            audioURL: audioURL,
-            typedText: typedText
+    @MainActor
+    func parseTextDump(
+        _ text: String,
+        preferences: UserPlanningPreferences,
+        existingTasks: [TaskItem],
+        existingScheduleBlocks: [ScheduleBlock]
+    ) async throws -> AITaskParseResponse {
+        let context = AIParsingContext(
+            currentDate: Date(),
+            timezone: TimeZone.current.identifier,
+            locale: Locale.current.identifier,
+            planningDay: .today,
+            planningStyle: .balancedDay,
+            preferences: preferences,
+            existingTasks: existingTasks,
+            existingScheduleBlocks: existingScheduleBlocks
         )
-
-        let (data, response) = try await URLSession.shared.upload(for: request, from: body)
-        return try decodeParseResponse(data: data, response: response)
-    }
-
-    private func decodeParseResponse(data: Data, response: URLResponse) throws -> VoiceDumpParseResponse {
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw VoiceDumpAPIError.invalidResponse
-        }
-
-        guard (200..<300).contains(httpResponse.statusCode) else {
-            let serverError = try? JSONDecoder().decode(VoiceDumpServerError.self, from: data)
-            throw VoiceDumpAPIError.serverError(serverError?.error ?? "Voice API failed with HTTP \(httpResponse.statusCode).")
-        }
-
-        return try JSONDecoder().decode(VoiceDumpParseResponse.self, from: data)
-    }
-
-    private func makeMultipartBody(boundary: String, audioURL: URL, typedText: String) throws -> Data {
-        var body = Data()
-        body.appendFormField(name: "typed_text", value: typedText, boundary: boundary)
-        body.appendFileField(
-            name: "audio",
-            filename: audioURL.lastPathComponent,
-            mimeType: "audio/m4a",
-            data: try Data(contentsOf: audioURL),
-            boundary: boundary
-        )
-        body.appendString("--\(boundary)--\r\n")
-        return body
-    }
-}
-
-private struct VoiceDumpTextRequest: Encodable {
-    var text: String
-}
-
-private struct VoiceDumpServerError: Decodable {
-    var error: String
-}
-
-private extension Data {
-    mutating func appendFormField(name: String, value: String, boundary: String) {
-        appendString("--\(boundary)\r\n")
-        appendString("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
-        appendString("\(value)\r\n")
-    }
-
-    mutating func appendFileField(
-        name: String,
-        filename: String,
-        mimeType: String,
-        data: Data,
-        boundary: String
-    ) {
-        appendString("--\(boundary)\r\n")
-        appendString("Content-Disposition: form-data; name=\"\(name)\"; filename=\"\(filename)\"\r\n")
-        appendString("Content-Type: \(mimeType)\r\n\r\n")
-        append(data)
-        appendString("\r\n")
-    }
-
-    mutating func appendString(_ string: String) {
-        append(Data(string.utf8))
+        let service = AIParsingServiceFactory.makeService(preferences: preferences)
+        return try await service.parseTaskCapture(rawText: text, context: context)
     }
 }

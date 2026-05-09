@@ -15,6 +15,9 @@ final class UserPlanningPreferences: Identifiable {
     var snoozeOptionsRawValue: String
     var enableTimeSensitiveReminders: Bool
     var customGentleSoundName: String?
+    var aiProxyEndpointURL: String = UserPlanningPreferences.defaultAIProxyEndpointURL
+    var enableAIParsing: Bool = true
+    var aiModeRawValue: String = AIParsingMode.openAIProxy.rawValue
     var createdAt: Date
     var updatedAt: Date
 
@@ -31,6 +34,9 @@ final class UserPlanningPreferences: Identifiable {
         snoozeOptions: [Int] = [5, 15, 30],
         enableTimeSensitiveReminders: Bool = false,
         customGentleSoundName: String? = nil,
+        aiProxyEndpointURL: String = UserPlanningPreferences.defaultAIProxyEndpointURL,
+        enableAIParsing: Bool = true,
+        aiMode: AIParsingMode = .openAIProxy,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -46,9 +52,14 @@ final class UserPlanningPreferences: Identifiable {
         self.snoozeOptionsRawValue = snoozeOptions.map(String.init).joined(separator: ",")
         self.enableTimeSensitiveReminders = enableTimeSensitiveReminders
         self.customGentleSoundName = customGentleSoundName
+        self.aiProxyEndpointURL = aiProxyEndpointURL
+        self.enableAIParsing = enableAIParsing
+        self.aiModeRawValue = aiMode.rawValue
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
+
+    static let defaultAIProxyEndpointURL = AIProxyConfiguration.hostedEndpointURLString
 
     var defaultReminderStyle: ReminderStyle {
         get { ReminderStyle(rawValue: defaultReminderStyleRawValue) ?? .gentle }
@@ -66,6 +77,14 @@ final class UserPlanningPreferences: Identifiable {
         }
         set {
             snoozeOptionsRawValue = newValue.sorted().map(String.init).joined(separator: ",")
+            touch()
+        }
+    }
+
+    var aiMode: AIParsingMode {
+        get { AIParsingMode(rawValue: aiModeRawValue) ?? .openAIProxy }
+        set {
+            aiModeRawValue = newValue.rawValue
             touch()
         }
     }

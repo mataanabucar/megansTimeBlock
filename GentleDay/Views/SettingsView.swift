@@ -112,6 +112,58 @@ private struct SettingsContent: View {
             .gentleCardStyle()
 
             VStack(alignment: .leading, spacing: 14) {
+                Text("AI parsing")
+                    .font(.headline)
+                    .foregroundStyle(GentleTheme.ink)
+
+                Toggle("Enable AI parsing", isOn: $preferences.enableAIParsing)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("AI mode")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(GentleTheme.ink)
+
+                    Picker("AI mode", selection: aiModeBinding) {
+                        ForEach(AIParsingMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    Text(preferences.aiMode.friendlyDescription)
+                        .font(.footnote)
+                        .foregroundStyle(GentleTheme.mutedInk)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("AI Proxy Endpoint URL")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(GentleTheme.ink)
+
+                    TextField(UserPlanningPreferences.defaultAIProxyEndpointURL, text: $preferences.aiProxyEndpointURL)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.URL)
+                        .autocorrectionDisabled()
+                        .padding(12)
+                        .background(GentleTheme.field)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(GentleTheme.outline)
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                    Text("OpenAI via Proxy uses your hosted Vercel backend endpoint for normal personal use. Mock AI is local and offline. A local Mac proxy such as http://<mac-wifi-ip>:8787/api/parse-task is only for development testing.")
+                        .font(.footnote)
+                        .foregroundStyle(GentleTheme.mutedInk)
+                }
+
+                Text("The OpenAI API key belongs on the hosted proxy, never in the iPhone app.")
+                    .font(.footnote)
+                    .foregroundStyle(GentleTheme.mutedInk)
+            }
+            .gentleCardStyle()
+
+            VStack(alignment: .leading, spacing: 14) {
                 Text("Reminders")
                     .font(.headline)
                     .foregroundStyle(GentleTheme.ink)
@@ -181,6 +233,13 @@ private struct SettingsContent: View {
         Binding(
             get: { preferences.defaultReminderStyle },
             set: { preferences.defaultReminderStyle = $0 }
+        )
+    }
+
+    private var aiModeBinding: Binding<AIParsingMode> {
+        Binding(
+            get: { preferences.aiMode },
+            set: { preferences.aiMode = $0 }
         )
     }
 
