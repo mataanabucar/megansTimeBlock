@@ -235,3 +235,69 @@ enum AIParsingMode: String, Codable, CaseIterable, Identifiable, Hashable {
         }
     }
 }
+
+// MARK: - UI-only enums (not persisted)
+
+/// Toggle on the Today screen between a stripped-down "Minimum Day" view
+/// (essentials only) and the full "Ideal Plan" view. UI-only — does not
+/// affect the underlying schedule data, just what's displayed.
+enum DayViewMode: String, CaseIterable, Identifiable, Hashable {
+    case minimum
+    case ideal
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .minimum: "Minimum Day"
+        case .ideal: "Ideal Plan"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .minimum: "Just the essentials. Hide the rest."
+        case .ideal: "The whole plan, gently laid out."
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .minimum: "leaf.fill"
+        case .ideal: "sun.max.fill"
+        }
+    }
+}
+
+/// The three rescue actions offered on the I'm Overwhelmed screen.
+enum OverwhelmResetOption: String, CaseIterable, Identifiable, Hashable {
+    case twoMinuteReset
+    case hideNonEssentials
+    case planTomorrow
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .twoMinuteReset: "2-minute reset"
+        case .hideNonEssentials: "Hide non-essentials"
+        case .planTomorrow: "Plan tomorrow"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .twoMinuteReset: "Pause and breathe. We'll wait."
+        case .hideNonEssentials: "Show only the must-dos for now."
+        case .planTomorrow: "Skip today. Build tomorrow's small plan."
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .twoMinuteReset: "wind"
+        case .hideNonEssentials: "eye.slash.fill"
+        case .planTomorrow: "moon.stars.fill"
+        }
+    }
+}

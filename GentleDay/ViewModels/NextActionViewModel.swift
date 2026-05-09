@@ -90,4 +90,25 @@ final class NextActionViewModel {
         }
         return "It is a low-friction place to restart."
     }
+
+    /// Return the next `count` best recommendations after the top one. Same
+    /// scoring logic — we just iteratively re-run `recommendation(...)` with
+    /// each previous winner removed. Used by the Next Action screen to show a
+    /// few alternates without changing the primary recommendation.
+    func topAlternatives(count: Int = 3, tasks: [TaskItem], blocks: [ScheduleBlock]) -> [NextActionRecommendation] {
+        guard let top = recommendation(tasks: tasks, blocks: blocks) else { return [] }
+
+        var workingTasks = tasks.filter { $0.id != top.taskId }
+        var workingBlocks = blocks.filter { $0.id != top.blockId }
+        var alternatives: [NextActionRecommendation] = []
+
+        for _ in 0..<count {
+            guard let next = recommendation(tasks: workingTasks, blocks: workingBlocks) else { break }
+            alternatives.append(next)
+            workingTasks = workingTasks.filter { $0.id != next.taskId }
+            workingBlocks = workingBlocks.filter { $0.id != next.blockId }
+        }
+
+        return alternatives
+    }
 }

@@ -26,39 +26,14 @@ struct ReviewView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: GentleTheme.Spacing.xl) {
                 GentleSectionHeader(
                     title: "Gentle Review",
                     subtitle: "Notice what happened and choose what stays."
                 )
 
-                HStack(spacing: 12) {
-                    ReviewMetric(title: "Completed", count: completed.count, color: GentleTheme.sage)
-                    ReviewMetric(title: "Moved", count: moved.count, color: GentleTheme.sky)
-                    ReviewMetric(title: "Unfinished", count: unfinished.count, color: GentleTheme.butter)
-                }
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(reviewMessage)
-                        .font(.headline)
-                        .foregroundStyle(GentleTheme.ink)
-
-                    Button("Carry unfinished to tomorrow") {
-                        carryUnfinishedToTomorrow()
-                    }
-                    Button("Return unfinished to Inbox") {
-                        returnUnfinishedToInbox()
-                    }
-                    Button("Drop unfinished for now") {
-                        dropUnfinishedForNow()
-                    }
-                    Button("Build tomorrow's minimum day") {
-                        buildTomorrowMinimumDay()
-                    }
-                }
-                .buttonStyle(.bordered)
-                .tint(GentleTheme.sage)
-                .gentleCardStyle()
+                metricsRow
+                actionsCard
 
                 if todayBlocks.isEmpty {
                     GentleEmptyState(
@@ -67,26 +42,88 @@ struct ReviewView: View {
                         systemImage: "moon"
                     )
                 } else {
-                    ForEach(todayBlocks.sorted { $0.startTime < $1.startTime }) { block in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(block.title)
-                                    .font(.headline)
-                                Text(block.status.title)
-                                    .font(.caption)
-                                    .foregroundStyle(GentleTheme.mutedInk)
-                            }
-                            Spacer()
-                        }
-                        .gentleCardStyle()
-                    }
+                    blockSummaryList
                 }
             }
-            .padding(20)
+            .padding(GentleTheme.Spacing.screenHorizontal)
+            .gentleBottomSafePad()
         }
         .gentleBackground()
         .navigationTitle("Review")
+        .navigationBarTitleDisplayMode(.inline)
     }
+
+    private var metricsRow: some View {
+        HStack(spacing: GentleTheme.Spacing.md) {
+            ReviewMetric(title: "Completed", count: completed.count, color: GentleTheme.sage)
+            ReviewMetric(title: "Moved", count: moved.count, color: GentleTheme.sky)
+            ReviewMetric(title: "Unfinished", count: unfinished.count, color: GentleTheme.butter)
+        }
+    }
+
+    private var actionsCard: some View {
+        VStack(alignment: .leading, spacing: GentleTheme.Spacing.md) {
+            Text(reviewMessage)
+                .font(GentleTheme.Typography.bodyEmphasized)
+                .foregroundStyle(GentleTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(spacing: GentleTheme.Spacing.sm) {
+                GentleButton(
+                    title: "Carry unfinished to tomorrow",
+                    systemImage: "arrow.right.circle.fill",
+                    role: .secondary,
+                    action: carryUnfinishedToTomorrow
+                )
+                GentleButton(
+                    title: "Return unfinished to Inbox",
+                    systemImage: "tray.and.arrow.up.fill",
+                    role: .secondary,
+                    action: returnUnfinishedToInbox
+                )
+                GentleButton(
+                    title: "Drop unfinished for now",
+                    systemImage: "leaf.arrow.circlepath",
+                    role: .secondary,
+                    action: dropUnfinishedForNow
+                )
+                GentleButton(
+                    title: "Build tomorrow's minimum day",
+                    systemImage: "moon.stars.fill",
+                    role: .primary,
+                    action: buildTomorrowMinimumDay
+                )
+            }
+        }
+        .gentleCardStyle()
+    }
+
+    private var blockSummaryList: some View {
+        VStack(spacing: GentleTheme.Spacing.md) {
+            ForEach(todayBlocks.sorted { $0.startTime < $1.startTime }) { block in
+                HStack(spacing: GentleTheme.Spacing.md) {
+                    GentleIconBadge(
+                        systemName: GentleTaskCard.icon(for: block.category),
+                        tint: GentleTheme.color(for: block.category),
+                        size: .small
+                    )
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(block.title)
+                            .font(GentleTheme.Typography.headline)
+                            .foregroundStyle(GentleTheme.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(block.status.title)
+                            .font(GentleTheme.Typography.caption)
+                            .foregroundStyle(GentleTheme.textSecondary)
+                    }
+                    Spacer()
+                }
+                .gentleCardStyle()
+            }
+        }
+    }
+
+    // MARK: - Actions
 
     private func carryUnfinishedToTomorrow() {
         unfinished.forEach {
@@ -172,18 +209,28 @@ private struct ReviewMetric: View {
     var color: Color
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: GentleTheme.Spacing.sm) {
             Text("\(count)")
-                .font(.title.weight(.bold))
-                .foregroundStyle(GentleTheme.ink)
+                .font(GentleTheme.Typography.displayMedium)
+                .foregroundStyle(GentleTheme.textPrimary)
             Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(GentleTheme.mutedInk)
+                .font(GentleTheme.Typography.caption.weight(.semibold))
+                .foregroundStyle(GentleTheme.textSecondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 18)
-        .background(color.opacity(0.18))
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(.vertical, GentleTheme.Spacing.lg)
+        .background(color.opacity(0.30))
+        .overlay {
+            RoundedRectangle(cornerRadius: GentleTheme.Radius.card, style: .continuous)
+                .stroke(color.opacity(0.5), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: GentleTheme.Radius.card, style: .continuous))
     }
 }
 
+#Preview {
+    NavigationStack {
+        ReviewView()
+    }
+    .modelContainer(PersistenceController.makeModelContainer())
+}

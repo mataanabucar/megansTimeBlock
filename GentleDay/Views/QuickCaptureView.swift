@@ -21,121 +21,20 @@ struct QuickCaptureView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("What do you need to do?")
-                        .font(.largeTitle.weight(.bold))
-                        .foregroundStyle(GentleTheme.ink)
-                    Text("Messy is fine. Save it first; sort it later.")
-                        .font(.body)
-                        .foregroundStyle(GentleTheme.mutedInk)
-                }
-
-                VStack(alignment: .leading, spacing: 12) {
-                    TextEditor(text: $viewModel.rawText)
-                        .font(.title3)
-                        .foregroundStyle(GentleTheme.ink)
-                        .tint(GentleTheme.sky)
-                        .focused($isRawTextFocused)
-                        .frame(minHeight: 170)
-                        .scrollContentBackground(.hidden)
-                        .padding(12)
-                        .background(GentleTheme.field)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .stroke(viewModel.isListening ? GentleTheme.sky.opacity(0.65) : GentleTheme.outline)
-                        }
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .overlay(alignment: .topLeading) {
-                            if viewModel.rawText.isEmpty {
-                                Text("Type the brain dump here...")
-                                    .font(.title3)
-                                    .foregroundStyle(GentleTheme.mutedInk.opacity(0.82))
-                                    .padding(.horizontal, 18)
-                                    .padding(.vertical, 20)
-                                    .allowsHitTesting(false)
-                            }
-                        }
-
-                    Button {
-                        toggleVoiceCapture()
-                    } label: {
-                        Label(viewModel.voiceButtonTitle, systemImage: viewModel.voiceButtonSystemImage)
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 13)
-                            .background(
-                                viewModel.isListening ? GentleTheme.sage : GentleTheme.sky.opacity(0.22)
-                            )
-                            .foregroundStyle(viewModel.isListening ? GentleTheme.onAccent : GentleTheme.ink)
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .stroke(viewModel.isListening ? Color.clear : GentleTheme.outline)
-                            }
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-
-                    if let message = viewModel.voiceMessage {
-                        Text(message)
-                            .font(.footnote)
-                            .foregroundStyle(GentleTheme.mutedInk)
-                    }
-
-                    Button {
-                        organizeWithAI()
-                    } label: {
-                        Label(isOrganizingWithAI ? "Organizing..." : "Organize with AI", systemImage: "sparkles")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 13)
-                            .background(canOrganizeWithAI ? GentleTheme.sky.opacity(0.22) : GentleTheme.field)
-                            .foregroundStyle(canOrganizeWithAI ? GentleTheme.ink : GentleTheme.mutedInk)
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .stroke(GentleTheme.outline)
-                            }
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!canOrganizeWithAI || isOrganizingWithAI)
-
-                    if let aiMessage {
-                        Text(aiMessage)
-                            .font(.footnote)
-                            .foregroundStyle(GentleTheme.mutedInk)
-                    }
-                }
-                .gentleCardStyle()
-
-                GentleSectionHeader(title: "Optional chips", subtitle: "Skip these if they slow you down.")
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 10)], spacing: 10) {
-                    ForEach(QuickCaptureChip.defaults) { chip in
-                        Button {
-                            viewModel.toggle(chip)
-                        } label: {
-                            GentlePill(
-                                title: chip.title,
-                                tint: tint(for: chip),
-                                isSelected: viewModel.selectedChips.contains(chip)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-
-                GentlePrimaryButton(title: viewModel.saveButtonTitle, systemImage: "tray.and.arrow.down.fill") {
-                    save()
-                }
-                .disabled(!viewModel.canSave)
-                .opacity(viewModel.canSave ? 1 : 0.45)
+            VStack(alignment: .leading, spacing: GentleTheme.Spacing.xxl) {
+                header
+                brainDumpCard
+                chipsSection
             }
-            .padding(20)
+            .padding(GentleTheme.Spacing.screenHorizontal)
         }
         .scrollDismissesKeyboard(.interactively)
         .gentleBackground()
         .navigationTitle("Quick Capture")
         .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .bottom) {
+            saveBar
+        }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
@@ -159,6 +58,165 @@ struct QuickCaptureView: View {
             )
         }
     }
+
+    // MARK: - Sections
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: GentleTheme.Spacing.sm) {
+            Text("What do you need to do?")
+                .font(GentleTheme.Typography.displayLarge)
+                .foregroundStyle(GentleTheme.textPrimary)
+            Text("Capture it all. We'll help sort it.")
+                .font(GentleTheme.Typography.body)
+                .foregroundStyle(GentleTheme.textSecondary)
+        }
+    }
+
+    private var brainDumpCard: some View {
+        VStack(alignment: .leading, spacing: GentleTheme.Spacing.md) {
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $viewModel.rawText)
+                    .font(GentleTheme.Typography.body)
+                    .foregroundStyle(GentleTheme.textPrimary)
+                    .tint(GentleTheme.primary)
+                    .focused($isRawTextFocused)
+                    .frame(minHeight: 200)
+                    .scrollContentBackground(.hidden)
+                    .padding(GentleTheme.Spacing.md)
+                    .background(GentleTheme.field)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: GentleTheme.Radius.card, style: .continuous)
+                            .stroke(viewModel.isListening ? GentleTheme.primary.opacity(0.7) : GentleTheme.outline, lineWidth: viewModel.isListening ? 1.5 : 1)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: GentleTheme.Radius.card, style: .continuous))
+
+                if viewModel.rawText.isEmpty {
+                    Text("Type the brain dump here...")
+                        .font(GentleTheme.Typography.body)
+                        .foregroundStyle(GentleTheme.textSecondary.opacity(0.7))
+                        .padding(.horizontal, GentleTheme.Spacing.md + 5)
+                        .padding(.vertical, GentleTheme.Spacing.lg)
+                        .allowsHitTesting(false)
+                }
+            }
+
+            HStack(spacing: GentleTheme.Spacing.sm) {
+                voiceButton
+                aiButton
+            }
+
+            if let message = viewModel.voiceMessage {
+                Text(message)
+                    .font(GentleTheme.Typography.caption)
+                    .foregroundStyle(GentleTheme.textSecondary)
+            }
+            if let aiMessage {
+                Text(aiMessage)
+                    .font(GentleTheme.Typography.caption)
+                    .foregroundStyle(GentleTheme.textSecondary)
+            }
+        }
+    }
+
+    private var voiceButton: some View {
+        Button {
+            toggleVoiceCapture()
+        } label: {
+            Label(viewModel.voiceButtonTitle, systemImage: viewModel.voiceButtonSystemImage)
+                .font(GentleTheme.Typography.button)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, GentleTheme.Spacing.md + 2)
+                .padding(.horizontal, GentleTheme.Spacing.md)
+                .background(viewModel.isListening ? GentleTheme.primary : GentleTheme.sky.opacity(0.4))
+                .foregroundStyle(viewModel.isListening ? GentleTheme.onAccent : GentleTheme.textPrimary)
+                .overlay {
+                    RoundedRectangle(cornerRadius: GentleTheme.Radius.chip, style: .continuous)
+                        .stroke(viewModel.isListening ? Color.clear : GentleTheme.outline, lineWidth: 1)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: GentleTheme.Radius.chip, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(viewModel.isListening ? "Stop voice capture" : "Start voice capture")
+    }
+
+    private var aiButton: some View {
+        Button {
+            organizeWithAI()
+        } label: {
+            HStack(spacing: GentleTheme.Spacing.sm) {
+                if isOrganizingWithAI {
+                    ProgressView().tint(GentleTheme.textPrimary)
+                } else {
+                    Image(systemName: "sparkles")
+                        .imageScale(.medium)
+                }
+                Text(isOrganizingWithAI ? "Organizing..." : "Organize with AI")
+            }
+            .font(GentleTheme.Typography.button)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, GentleTheme.Spacing.md + 2)
+            .padding(.horizontal, GentleTheme.Spacing.md)
+            .background(canOrganizeWithAI ? GentleTheme.lilac.opacity(0.4) : GentleTheme.field)
+            .foregroundStyle(canOrganizeWithAI ? GentleTheme.textPrimary : GentleTheme.textSecondary)
+            .overlay {
+                RoundedRectangle(cornerRadius: GentleTheme.Radius.chip, style: .continuous)
+                    .stroke(GentleTheme.outline, lineWidth: 1)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: GentleTheme.Radius.chip, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(!canOrganizeWithAI || isOrganizingWithAI)
+        .accessibilityLabel("Organize with AI")
+    }
+
+    private var chipsSection: some View {
+        VStack(alignment: .leading, spacing: GentleTheme.Spacing.md) {
+            GentleSectionHeader(
+                title: "Optional chips",
+                subtitle: "Skip these if they slow you down."
+            )
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 96), spacing: GentleTheme.Spacing.sm)],
+                spacing: GentleTheme.Spacing.sm
+            ) {
+                ForEach(QuickCaptureChip.defaults) { chip in
+                    Button {
+                        viewModel.toggle(chip)
+                    } label: {
+                        GentleChip(
+                            title: chip.title,
+                            tint: tint(for: chip),
+                            isSelected: viewModel.selectedChips.contains(chip)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var saveBar: some View {
+        VStack(spacing: GentleTheme.Spacing.sm) {
+            GentleButton(
+                title: viewModel.saveButtonTitle,
+                systemImage: "tray.and.arrow.down.fill",
+                role: .primary,
+                isEnabled: viewModel.canSave,
+                action: save
+            )
+        }
+        .padding(.horizontal, GentleTheme.Spacing.screenHorizontal)
+        .padding(.top, GentleTheme.Spacing.md)
+        .padding(.bottom, GentleTheme.Spacing.md)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(GentleTheme.outline)
+                .frame(height: 1)
+        }
+    }
+
+    // MARK: - Helpers
 
     private var canOrganizeWithAI: Bool {
         guard let preference = preferences.first else { return false }
@@ -318,6 +376,9 @@ struct QuickCaptureView: View {
         }
         if chip.minutes != nil {
             return GentleTheme.butter
+        }
+        if chip.dueDateOffset != nil {
+            return GentleTheme.lilac
         }
         return GentleTheme.sage
     }

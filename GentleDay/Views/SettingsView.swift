@@ -37,10 +37,12 @@ struct SettingsView: View {
                     onWipeTapped: { isShowingWipeOptions = true }
                 )
             }
-            .padding(20)
+            .padding(GentleTheme.Spacing.screenHorizontal)
+            .gentleBottomSafePad()
         }
         .gentleBackground()
         .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog(
             "Wipe Gentle Day data?",
             isPresented: $isShowingWipeOptions,
