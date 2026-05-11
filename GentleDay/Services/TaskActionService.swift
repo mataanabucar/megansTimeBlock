@@ -11,7 +11,7 @@ enum TaskActionService {
 
     static func scheduleSoon(_ task: TaskItem, preferences: UserPlanningPreferences?, context: ModelContext) {
         let minutes = task.estimatedMinutes > 0 ? task.estimatedMinutes : preferences?.defaultTaskDuration ?? 15
-        let start = Calendar.current.date(byAdding: .minute, value: 10, to: Date()) ?? Date()
+        let start = suggestedStart(for: task, preferences: preferences)
         let end = Calendar.current.date(byAdding: .minute, value: minutes, to: start) ?? start
         let block = ScheduleBlock(
             taskId: task.id,
@@ -26,6 +26,32 @@ enum TaskActionService {
         task.status = .scheduled
         context.insert(block)
         try? context.save()
+    }
+
+    private static func suggestedStart(for task: TaskItem, preferences: UserPlanningPreferences?) -> Date {
+        let calendar = Calendar.current
+        let now = Date()
+        guard let preferences, preferences.protectedPlanningEnabled else {
+            return calendar.date(byAdding: .minute, value: 10, to: now) ?? now
+        }
+
+        let cutoff = SchedulingPolicy.eveningCutoff(on: now, preferences: preferences)
+        if SchedulingPolicy.isHeavyEveningTask(task), now >= cutoff {
+            let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) ?? now
+            return SchedulingPolicy.primaryDayWindow(on: tomorrow, preferences: preferences).start
+        }
+
+        if SchedulingPolicy.isSteadyRoutine(task) {
+            let window = SchedulingPolicy.steadyRoutineWindow(on: now, preferences: preferences, calendar: calendar)
+            return max(calendar.date(byAdding: .minute, value: 10, to: now) ?? now, window.start)
+        }
+
+        if SchedulingPolicy.isErrandLike(task) {
+            let window = SchedulingPolicy.errandWindow(on: now, preferences: preferences, calendar: calendar)
+            return max(calendar.date(byAdding: .minute, value: 10, to: now) ?? now, window.start)
+        }
+
+        return calendar.date(byAdding: .minute, value: 10, to: now) ?? now
     }
 
     static func shrinkTask(_ task: TaskItem, context: ModelContext) {
@@ -129,4 +155,3 @@ enum TaskActionService {
         return nil
     }
 }
-

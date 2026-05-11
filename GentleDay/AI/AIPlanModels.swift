@@ -69,8 +69,19 @@ struct AIPlanningPreferencesSnapshot: Codable {
     var defaultWindowStart: Date
     var defaultWindowEnd: Date
     var eveningStartTime: Date
+    var primaryDayWindowStart: Date
+    var primaryDayWindowEnd: Date
+    var eveningCutoffTime: Date
     var defaultTaskDuration: Int
     var bufferMinutes: Int
+    var protectedPlanningEnabled: Bool
+    var reserveQuietBlock: Bool
+    var quietBlockMinutes: Int
+    var maxAutoScheduledBlocksPerDay: Int
+    var lowEffortErrandEnabled: Bool
+    var groceryPickupDurationMinutes: Int
+    var steadyRoutineDurationMinutes: Int
+    var steadyRoutineBufferMinutes: Int
     var defaultReminderStyle: ReminderStyle
     var snoozeOptions: [Int]
     var enableTimeSensitiveReminders: Bool
@@ -139,8 +150,19 @@ extension AIPlanningPreferencesSnapshot {
         self.defaultWindowStart = preferences.defaultWindowStart
         self.defaultWindowEnd = preferences.defaultWindowEnd
         self.eveningStartTime = preferences.eveningStartTime
+        self.primaryDayWindowStart = preferences.primaryDayWindowStart
+        self.primaryDayWindowEnd = preferences.primaryDayWindowEnd
+        self.eveningCutoffTime = preferences.eveningCutoffTime
         self.defaultTaskDuration = preferences.defaultTaskDuration
         self.bufferMinutes = preferences.bufferMinutes
+        self.protectedPlanningEnabled = preferences.protectedPlanningEnabled
+        self.reserveQuietBlock = preferences.reserveQuietBlock
+        self.quietBlockMinutes = preferences.quietBlockMinutes
+        self.maxAutoScheduledBlocksPerDay = preferences.maxAutoScheduledBlocksPerDay
+        self.lowEffortErrandEnabled = preferences.lowEffortErrandEnabled
+        self.groceryPickupDurationMinutes = preferences.groceryPickupDurationMinutes
+        self.steadyRoutineDurationMinutes = preferences.steadyRoutineDurationMinutes
+        self.steadyRoutineBufferMinutes = preferences.steadyRoutineBufferMinutes
         self.defaultReminderStyle = preferences.defaultReminderStyle
         self.snoozeOptions = preferences.snoozeOptions
         self.enableTimeSensitiveReminders = preferences.enableTimeSensitiveReminders

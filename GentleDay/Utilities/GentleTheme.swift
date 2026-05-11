@@ -65,6 +65,7 @@ enum GentleTheme {
     /// to deep-navy text on the warm off-white background.
     static func color(for category: TaskCategory) -> Color {
         switch category {
+        case .steadyRoutine: Color(red: 0.78, green: 0.82, blue: 0.92)
         case .home: sage
         case .errand: sky
         case .family: peach

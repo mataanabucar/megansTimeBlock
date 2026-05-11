@@ -156,6 +156,7 @@ final class TaskItem: Identifiable {
         if title.contains("bill") || title.contains("pay") { return "Open the bill or payment page." }
         if title.contains("call") { return "Find the phone number." }
         if title.contains("appointment") { return "Check the date and time." }
+        if title.contains("grocery") || title.contains("groceries") { return "Choose pickup or store trip." }
         return "Do the first visible step."
     }
 
@@ -176,6 +177,14 @@ final class TaskItem: Identifiable {
                 "Move clothes to dryer, 5 min",
                 "Fold five items, 5 min",
                 "Set a 10-minute timer"
+            ]
+        }
+
+        if title.contains("grocery") || title.contains("groceries") {
+            return [
+                "Pickup option: 25 min",
+                "Make a short list, 10 min",
+                "Full store option: 60 min"
             ]
         }
 
@@ -219,7 +228,7 @@ struct NaturalTimeHint: Equatable {
     /// Soft cap on how late this task can be scheduled, regardless of the
     /// flexible window. Used for child / family / outdoor activity context.
     /// Time-of-day component only; the scheduler combines it with the chosen
-    /// day. Examples: "with Scarlett" → 19:30, "at the park" → 19:30.
+    /// day. Examples: "with child" -> 19:30, "at the park" -> 19:30.
     var windowEndCap: DateComponents? = nil
 
     /// Reason behind `windowEndCap`, surfaced in the scheduler's reason text.
@@ -297,8 +306,8 @@ enum NaturalTimeParser {
             expectedEstimatedMinutes: 67
         ),
         NaturalTimeParserSampleCase(
-            rawText: "Give Scarlett a bath in the afternoon",
-            expectedCleanedTitle: "Give Scarlett a bath",
+            rawText: "Give child a bath in the afternoon",
+            expectedCleanedTitle: "Give child a bath",
             expectedPreferredDayOfWeek: nil,
             expectedWindowLabel: "Afternoon",
             expectedEstimatedMinutes: 25
@@ -585,9 +594,8 @@ enum NaturalTimeParser {
     /// Soft cap on how late a task can be scheduled. Returns hour:minute as
     /// DateComponents and a human-readable reason.
     private static func endCap(for text: String, calendar: Calendar) -> (DateComponents?, String?) {
-        // Family / child context — Scarlett is the user's daughter; common kid names
-        // and explicit family signals all gate to ≤ 19:30.
-        let familyPattern = #"\b(?:scarlett|kiddo|kids?|baby|toddler|child|with\s+(?:my\s+)?(?:daughter|son|kid))\b"#
+        // Family / child context stays before the evening cutoff.
+        let familyPattern = #"\b(?:kiddo|kids?|baby|toddler|child|with\s+(?:my\s+)?(?:daughter|son|kid))\b"#
         if contains(familyPattern, in: text) {
             return (DateComponents(hour: 19, minute: 30), "child / family activity stays before 7:30 PM")
         }

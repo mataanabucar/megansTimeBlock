@@ -12,7 +12,7 @@ final class BuildPlanViewModel {
 
     @ObservationIgnored private let service: any AIScheduleService
 
-    init(service: any AIScheduleService = MockAIScheduleService()) {
+    init(service: any AIScheduleService = HeuristicScheduler()) {
         self.service = service
     }
 

@@ -37,11 +37,13 @@ SwiftData persists tasks, schedule blocks, planning preferences, reminder settin
 - Captured items persist locally through SwiftData.
 - Inbox shows unscheduled/open items with edit, schedule, done, shrink, and delete actions.
 - Build My Day generates a local mock plan from inbox tasks and preferences.
+- Build My Day can protect a primary daytime window, reserve quiet space, keep auto-plans capped, and prefer steady routines, errands, and grocery pickup during daytime.
 - Minimum Day is capped and conservative.
 - Today Schedule supports done, snooze, shrink, move later, tomorrow, and skip without guilt.
 - What Should I Do Next shows one recommendation.
 - I'm Overwhelmed hides the full list and shows only three tiny actions.
 - Settings includes planning windows, buffers, reminder defaults, snooze options, Time Sensitive toggle, AI proxy/mock settings, Siri guidance, and AlarmKit notes.
+- Settings includes daytime anchor controls for steady routines, quiet blocks, max planned blocks, evening cutoff, and grocery pickup duration.
 - Local notification categories and actions are registered for block reminders.
 
 ## AI Parsing Setup
@@ -92,10 +94,11 @@ The parse request sends structured JSON with `rawText`, `currentDate`, `timezone
 ## What Is Mocked
 
 - Mock AI parsing is local and deterministic through `MockAIParsingService`.
-- AI scheduling is local and deterministic through `MockAIScheduleService`.
+- AI scheduling is local and deterministic through `HeuristicScheduler`.
 - `OpenAIScheduleService` is a placeholder and intentionally throws `notImplemented`.
 - Voice capture uses on-device speech transcription, then sends the resulting text through the configured AI parsing mode.
 - Notification action handling posts an in-process event; deeper SwiftData updates from background actions should be finished and tested in Xcode.
+- Recovery-sensitive planner tests are in `GentleDayTests/`; run them through the shared `GentleDay` Xcode scheme when full Xcode is selected.
 - AlarmKit is a future adapter path only.
 
 No OpenAI API keys are included in the iOS app.

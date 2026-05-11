@@ -219,7 +219,7 @@ struct HomeView: View {
     private var winsRow: some View {
         HStack(spacing: GentleTheme.Spacing.md) {
             GentleIconBadge(systemName: "checkmark.seal.fill", tint: GentleTheme.sage, size: .small)
-            Text("\(completedTodayCount) gentle win\(completedTodayCount == 1 ? "" : "s") today.")
+            Text("\(completedTodayCount) done today.")
                 .font(GentleTheme.Typography.subheadline.weight(.medium))
                 .foregroundStyle(GentleTheme.textPrimary)
             Spacer()

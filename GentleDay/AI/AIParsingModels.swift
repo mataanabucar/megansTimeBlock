@@ -7,8 +7,8 @@ struct AIParsingContext: Codable {
     var planningDay: ScheduleRange
     var planningStyle: PlanningStyle
     var userPreferences: AIPlanningPreferencesSnapshot
-    var existingTasks: [AITaskSnapshot]
-    var existingScheduleBlocks: [AIScheduleBlockSnapshot]
+    var existingTasks: [AIParsingTaskContextSnapshot]
+    var existingScheduleBlocks: [AIParsingBlockContextSnapshot]
 
     init(
         currentDate: Date = Date(),
@@ -26,9 +26,25 @@ struct AIParsingContext: Codable {
         self.planningDay = planningDay
         self.planningStyle = planningStyle
         self.userPreferences = AIPlanningPreferencesSnapshot(preferences: preferences)
-        self.existingTasks = existingTasks.map(AITaskSnapshot.init(task:))
-        self.existingScheduleBlocks = existingScheduleBlocks.map(AIScheduleBlockSnapshot.init(block:))
+        self.existingTasks = existingTasks.map(AIParsingTaskContextSnapshot.init(task:))
+        self.existingScheduleBlocks = existingScheduleBlocks.map(AIParsingBlockContextSnapshot.init(block:))
     }
+}
+
+struct AIParsingTaskContextSnapshot: Codable, Identifiable {
+    var id: UUID
+    var estimatedMinutes: Int
+    var dueDate: Date?
+    var flexibleWindow: String?
+    var status: TaskStatus
+}
+
+struct AIParsingBlockContextSnapshot: Codable, Identifiable {
+    var id: UUID
+    var startTime: Date
+    var endTime: Date
+    var flexibleWindowLabel: String
+    var status: BlockStatus
 }
 
 struct AITaskParseRequest: Encodable {
@@ -42,8 +58,8 @@ struct AITaskParseRequest: Encodable {
     var sleepTime: Date
     var preferredReminderBehavior: ReminderStyle
     var defaultTaskDuration: Int
-    var existingTasks: [AITaskSnapshot]
-    var existingScheduleBlocks: [AIScheduleBlockSnapshot]
+    var existingTasks: [AIParsingTaskContextSnapshot]
+    var existingScheduleBlocks: [AIParsingBlockContextSnapshot]
     var context: AIParsingContext
 
     init(rawText: String, context: AIParsingContext) {
@@ -60,6 +76,28 @@ struct AITaskParseRequest: Encodable {
         self.existingTasks = context.existingTasks
         self.existingScheduleBlocks = context.existingScheduleBlocks
         self.context = context
+    }
+}
+
+typealias ParseTaskRequest = AITaskParseRequest
+
+extension AIParsingTaskContextSnapshot {
+    init(task: TaskItem) {
+        self.id = task.id
+        self.estimatedMinutes = task.estimatedMinutes
+        self.dueDate = task.dueDate
+        self.flexibleWindow = task.flexibleWindow
+        self.status = task.status
+    }
+}
+
+extension AIParsingBlockContextSnapshot {
+    init(block: ScheduleBlock) {
+        self.id = block.id
+        self.startTime = block.startTime
+        self.endTime = block.endTime
+        self.flexibleWindowLabel = block.flexibleWindowLabel
+        self.status = block.status
     }
 }
 

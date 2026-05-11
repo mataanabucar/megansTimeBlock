@@ -156,7 +156,7 @@ struct ReviewView: View {
 
     private func buildTomorrowMinimumDay() {
         guard let preference = preferences.first else { return }
-        let service = MockAIScheduleService()
+        let service = HeuristicScheduler()
         Task {
             let response = try? await service.generatePlan(
                 tasks: tasks,

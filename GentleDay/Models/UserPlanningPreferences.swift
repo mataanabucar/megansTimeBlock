@@ -9,8 +9,19 @@ final class UserPlanningPreferences: Identifiable {
     var defaultWindowStart: Date
     var defaultWindowEnd: Date
     var eveningStartTime: Date
+    var primaryDayWindowStart: Date = UserPlanningPreferences.time(hour: 9, minute: 0)
+    var primaryDayWindowEnd: Date = UserPlanningPreferences.time(hour: 15, minute: 30)
+    var eveningCutoffTime: Date = UserPlanningPreferences.time(hour: 19, minute: 30)
     var defaultTaskDuration: Int
     var bufferMinutes: Int
+    var protectedPlanningEnabled: Bool = true
+    var reserveQuietBlock: Bool = true
+    var quietBlockMinutes: Int = 30
+    var maxAutoScheduledBlocksPerDay: Int = 5
+    var lowEffortErrandEnabled: Bool = true
+    var groceryPickupDurationMinutes: Int = 25
+    var steadyRoutineDurationMinutes: Int = 60
+    var steadyRoutineBufferMinutes: Int = 15
     var defaultReminderStyleRawValue: String
     var snoozeOptionsRawValue: String
     var enableTimeSensitiveReminders: Bool
@@ -28,8 +39,19 @@ final class UserPlanningPreferences: Identifiable {
         defaultWindowStart: Date = UserPlanningPreferences.time(hour: 9, minute: 0),
         defaultWindowEnd: Date = UserPlanningPreferences.time(hour: 20, minute: 30),
         eveningStartTime: Date = UserPlanningPreferences.time(hour: 17, minute: 30),
+        primaryDayWindowStart: Date = UserPlanningPreferences.time(hour: 9, minute: 0),
+        primaryDayWindowEnd: Date = UserPlanningPreferences.time(hour: 15, minute: 30),
+        eveningCutoffTime: Date = UserPlanningPreferences.time(hour: 19, minute: 30),
         defaultTaskDuration: Int = 20,
         bufferMinutes: Int = 10,
+        protectedPlanningEnabled: Bool = true,
+        reserveQuietBlock: Bool = true,
+        quietBlockMinutes: Int = 30,
+        maxAutoScheduledBlocksPerDay: Int = 5,
+        lowEffortErrandEnabled: Bool = true,
+        groceryPickupDurationMinutes: Int = 25,
+        steadyRoutineDurationMinutes: Int = 60,
+        steadyRoutineBufferMinutes: Int = 15,
         defaultReminderStyle: ReminderStyle = .gentle,
         snoozeOptions: [Int] = [5, 15, 30],
         enableTimeSensitiveReminders: Bool = false,
@@ -46,8 +68,19 @@ final class UserPlanningPreferences: Identifiable {
         self.defaultWindowStart = defaultWindowStart
         self.defaultWindowEnd = defaultWindowEnd
         self.eveningStartTime = eveningStartTime
+        self.primaryDayWindowStart = primaryDayWindowStart
+        self.primaryDayWindowEnd = primaryDayWindowEnd
+        self.eveningCutoffTime = eveningCutoffTime
         self.defaultTaskDuration = max(5, defaultTaskDuration)
         self.bufferMinutes = max(0, bufferMinutes)
+        self.protectedPlanningEnabled = protectedPlanningEnabled
+        self.reserveQuietBlock = reserveQuietBlock
+        self.quietBlockMinutes = max(0, quietBlockMinutes)
+        self.maxAutoScheduledBlocksPerDay = max(1, maxAutoScheduledBlocksPerDay)
+        self.lowEffortErrandEnabled = lowEffortErrandEnabled
+        self.groceryPickupDurationMinutes = max(10, groceryPickupDurationMinutes)
+        self.steadyRoutineDurationMinutes = max(10, steadyRoutineDurationMinutes)
+        self.steadyRoutineBufferMinutes = max(0, steadyRoutineBufferMinutes)
         self.defaultReminderStyleRawValue = defaultReminderStyle.rawValue
         self.snoozeOptionsRawValue = snoozeOptions.map(String.init).joined(separator: ",")
         self.enableTimeSensitiveReminders = enableTimeSensitiveReminders

@@ -24,7 +24,7 @@ struct OverwhelmedView: View {
                 if lhs.estimatedMinutes != rhs.estimatedMinutes { return lhs.estimatedMinutes < rhs.estimatedMinutes }
                 return lhs.createdAt < rhs.createdAt
             }
-            .prefix(4)
+            .prefix(3)
             .map { task -> OverwhelmTinyAction in
                 OverwhelmTinyAction(
                     taskId: task.id,
@@ -38,16 +38,15 @@ struct OverwhelmedView: View {
         var actions = Array(openTasks)
         let fallback: [OverwhelmTinyAction] = [
             OverwhelmTinyAction(taskId: nil, title: "Drink water", minutes: 1, systemImage: "drop.fill", tint: GentleTheme.sky),
-            OverwhelmTinyAction(taskId: nil, title: "Take 5 slow breaths", minutes: 2, systemImage: "wind", tint: GentleTheme.lilac),
-            OverwhelmTinyAction(taskId: nil, title: "Start laundry", minutes: 5, systemImage: "sparkles", tint: GentleTheme.sage),
+            OverwhelmTinyAction(taskId: nil, title: "Set a two-minute timer", minutes: 2, systemImage: "timer", tint: GentleTheme.lilac),
             OverwhelmTinyAction(taskId: nil, title: "Put dishes in sink", minutes: 2, systemImage: "fork.knife", tint: GentleTheme.peach)
         ]
 
-        for item in fallback where actions.count < 4 {
+        for item in fallback where actions.count < 3 {
             actions.append(item)
         }
 
-        return Array(actions.prefix(4))
+        return Array(actions.prefix(3))
     }
 
     var body: some View {
@@ -152,7 +151,7 @@ struct OverwhelmedView: View {
     }
 
     private var footer: some View {
-        Text("Pause. Breathe. You're doing great.")
+        Text("This can stay small.")
             .font(GentleTheme.Typography.compassionate)
             .foregroundStyle(GentleTheme.textSecondary)
             .frame(maxWidth: .infinity, alignment: .center)
@@ -166,7 +165,7 @@ struct OverwhelmedView: View {
             task.status = .done
             try? modelContext.save()
         }
-        message = "Win counted. This is enough for now."
+        message = "Done. This is enough for now."
     }
 
     private func optionSubtitle(_ option: OverwhelmResetOption) -> String {
@@ -198,7 +197,7 @@ struct OverwhelmedView: View {
     private func handle(_ option: OverwhelmResetOption) {
         switch option {
         case .twoMinuteReset:
-            message = "Two minutes. Drink water. Take five slow breaths. Notice one thing in the room."
+            message = "Two minutes. Drink water. Notice one thing in the room."
         case .hideNonEssentials:
             hideNonEssentials.toggle()
             message = hideNonEssentials

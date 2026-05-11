@@ -10,7 +10,7 @@ import OpenAI from "openai";
 import { toFile } from "openai/uploads";
 
 const port = Number(process.env.PORT || 8787);
-const DEBUG_AI_PROXY = process.env.DEBUG_AI_PROXY !== "false";
+const DEBUG_AI_PROXY = process.env.DEBUG_AI_PROXY === "true";
 const parseTaskEndpoint = "/api/parse-task";
 const upload = multer({
   dest: "uploads/",
@@ -26,21 +26,6 @@ app.use(express.json());
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
-
-const taskCategories = [
-  "home",
-  "errand",
-  "family",
-  "money",
-  "appointment",
-  "cleaning",
-  "wellness",
-  "meals",
-  "bills",
-  "routine",
-  "lifeAdmin",
-  "other"
-];
 
 const supportedAudioExtensions = new Set(["mp3", "mp4", "mpeg", "mpga", "m4a", "wav", "webm"]);
 
@@ -59,15 +44,11 @@ const taskSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["title", "category", "original_phrase", "estimated_minutes", "confidence"],
+        required: ["title", "original_phrase", "estimated_minutes", "confidence"],
         properties: {
           title: {
             type: "string",
             description: "Short actionable task title in sentence case."
-          },
-          category: {
-            type: "string",
-            enum: taskCategories
           },
           original_phrase: {
             type: "string",
@@ -125,7 +106,6 @@ app.post("/api/parse-task", async (request, response) => {
     const transcript = cleanText(request.body?.rawText || request.body?.text || request.body?.transcript || "");
     logAIProxyDebug("incoming request", {
       requestId,
-      rawTextPreview: previewText(transcript),
       currentDate: sanitizeLogValue(request.body?.currentDate),
       timezone: sanitizeLogValue(request.body?.timezone),
       locale: sanitizeLogValue(request.body?.locale)
@@ -147,7 +127,11 @@ app.post("/api/parse-task", async (request, response) => {
       openaiResponseId,
       endpoint: parseTaskEndpoint
     });
-    logAIProxyDebug("final response json", payload);
+    logAIProxyDebug("final response", {
+      requestId,
+      taskCount: payload.tasks.length,
+      warningCount: payload.warnings.length
+    });
     response.json(payload);
   } catch (error) {
     console.error("[AI_PROXY_ERROR]", { requestId, message: error?.message || "Task parsing failed." });

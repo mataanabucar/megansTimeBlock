@@ -504,7 +504,7 @@ private struct ScheduleBlockEditView: View {
             Section("Block") {
                 TextField("Title", text: $block.title)
                 Picker("Category", selection: categoryBinding) {
-                    ForEach(TaskCategory.allCases) { category in
+                    ForEach(categoryOptions) { category in
                         Text(category.title).tag(category)
                     }
                 }
@@ -573,6 +573,12 @@ private struct ScheduleBlockEditView: View {
             get: { block.category },
             set: { block.category = $0 }
         )
+    }
+
+    private var categoryOptions: [TaskCategory] {
+        TaskCategory.userSelectableCases.contains(block.category)
+            ? TaskCategory.userSelectableCases
+            : [block.category] + TaskCategory.userSelectableCases
     }
 
     private var statusBinding: Binding<BlockStatus> {

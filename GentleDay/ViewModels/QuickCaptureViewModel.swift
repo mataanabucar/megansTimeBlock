@@ -36,6 +36,7 @@ struct QuickCaptureChip: Identifiable, Hashable {
         QuickCaptureChip(title: "Money", category: .money),
         QuickCaptureChip(title: "Appointment", category: .appointment),
         QuickCaptureChip(title: "Cleaning", category: .cleaning),
+        QuickCaptureChip(title: "Routine", category: .steadyRoutine),
         QuickCaptureChip(title: "5 min", minutes: 5),
         QuickCaptureChip(title: "15 min", minutes: 15),
         QuickCaptureChip(title: "30 min", minutes: 30),
@@ -218,6 +219,9 @@ final class QuickCaptureViewModel {
         }
         if lowercased.contains("doctor") || lowercased.contains("appointment") {
             return .appointment
+        }
+        if lowercased.contains("meeting") || lowercased.contains("daily routine") || lowercased.contains("journal") {
+            return .steadyRoutine
         }
         if lowercased.contains("med") || lowercased.contains("nail") || lowercased.contains("pharmacy") {
             return .wellness

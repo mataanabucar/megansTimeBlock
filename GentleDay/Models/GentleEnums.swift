@@ -1,6 +1,7 @@
 import Foundation
 
 enum TaskCategory: String, Codable, CaseIterable, Identifiable, Hashable {
+    case steadyRoutine
     case home
     case errand
     case family
@@ -18,6 +19,7 @@ enum TaskCategory: String, Codable, CaseIterable, Identifiable, Hashable {
 
     var title: String {
         switch self {
+        case .steadyRoutine: "Steady Routine"
         case .home: "Home"
         case .errand: "Errand"
         case .family: "Family"
@@ -31,6 +33,10 @@ enum TaskCategory: String, Codable, CaseIterable, Identifiable, Hashable {
         case .lifeAdmin: "Life Admin"
         case .other: "Other"
         }
+    }
+
+    static var userSelectableCases: [TaskCategory] {
+        allCases.filter { $0 != .steadyRoutine }
     }
 }
 
@@ -287,8 +293,8 @@ enum OverwhelmResetOption: String, CaseIterable, Identifiable, Hashable {
 
     var subtitle: String {
         switch self {
-        case .twoMinuteReset: "Pause and breathe. We'll wait."
-        case .hideNonEssentials: "Show only the must-dos for now."
+        case .twoMinuteReset: "Start a two-minute timer."
+        case .hideNonEssentials: "Show only essentials for now."
         case .planTomorrow: "Skip today. Build tomorrow's small plan."
         }
     }

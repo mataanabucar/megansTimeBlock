@@ -75,21 +75,7 @@ final class ReminderService {
         guard block.reminderStyle != .none else { return }
         guard block.startTime > Date() else { return }
 
-        let content = UNMutableNotificationContent()
-        content.title = "Gentle Day"
-        content.body = announceableBody(for: block, task: task)
-        content.categoryIdentifier = Self.blockReminderCategory
-        content.sound = sound(for: task)
-        content.userInfo = [
-            "blockId": block.id.uuidString,
-            "taskId": block.taskId?.uuidString ?? "",
-            "reminderStyle": block.reminderStyle.rawValue,
-            "alarmCandidate": block.reminderStyle == .alarmCandidate
-        ]
-
-        if block.reminderStyle == .timeSensitive {
-            content.interruptionLevel = .timeSensitive
-        }
+        let content = makeReminderContent(for: block, task: task)
 
         let triggerComponents = Calendar.current.dateComponents(
             [.year, .month, .day, .hour, .minute],
@@ -119,9 +105,32 @@ final class ReminderService {
         "gentle_block_\(block.id.uuidString)"
     }
 
-    private func announceableBody(for block: ScheduleBlock, task: TaskItem?) -> String {
-        let tinyStep = task.flatMap { $0.suggestedTinyStep.nilIfBlank } ?? "One small step is enough."
-        return "Your next block is ready. \(block.title). \(tinyStep)"
+    func makeReminderContent(for block: ScheduleBlock, task: TaskItem?) -> UNMutableNotificationContent {
+        let content = UNMutableNotificationContent()
+        content.title = block.title
+        content.subtitle = ""
+        content.body = reminderBody(for: block, task: task)
+        content.categoryIdentifier = Self.blockReminderCategory
+        content.sound = sound(for: task)
+        content.userInfo = [
+            "blockId": block.id.uuidString,
+            "taskId": block.taskId?.uuidString ?? "",
+            "reminderStyle": block.reminderStyle.rawValue,
+            "alarmCandidate": block.reminderStyle == .alarmCandidate
+        ]
+
+        if block.reminderStyle == .timeSensitive {
+            content.interruptionLevel = .timeSensitive
+        }
+
+        return content
+    }
+
+    private func reminderBody(for block: ScheduleBlock, task: TaskItem?) -> String {
+        guard let note = task?.notes.nilIfBlank else {
+            return block.title
+        }
+        return "\(block.title). \(note)"
     }
 
     private func sound(for task: TaskItem?) -> UNNotificationSound {

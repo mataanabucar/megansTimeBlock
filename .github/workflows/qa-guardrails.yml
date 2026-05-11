@@ -1,0 +1,22 @@
+name: QA Guardrails
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  privacy-audits:
+    name: Privacy audits
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Audit user-visible strings
+        run: scripts/audit-strings.sh
+
+      - name: Audit source identifiers
+        run: scripts/audit-identifiers.sh

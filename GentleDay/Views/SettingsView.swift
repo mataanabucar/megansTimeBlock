@@ -105,11 +105,35 @@ private struct SettingsContent: View {
             .gentleCardStyle()
 
             VStack(alignment: .leading, spacing: 14) {
+                Text("Daytime anchors")
+                    .font(.headline)
+                    .foregroundStyle(GentleTheme.ink)
+
+                Toggle("Protect steady routines", isOn: $preferences.protectedPlanningEnabled)
+                DatePicker("Primary window starts", selection: $preferences.primaryDayWindowStart, displayedComponents: [.hourAndMinute])
+                DatePicker("Primary window ends", selection: $preferences.primaryDayWindowEnd, displayedComponents: [.hourAndMinute])
+                DatePicker("Evening cutoff", selection: $preferences.eveningCutoffTime, displayedComponents: [.hourAndMinute])
+
+                Toggle("Reserve quiet block", isOn: $preferences.reserveQuietBlock)
+                Stepper("Quiet block: \(preferences.quietBlockMinutes) min", value: $preferences.quietBlockMinutes, in: 0...120, step: 5)
+                Stepper("Max planned blocks: \(preferences.maxAutoScheduledBlocksPerDay)", value: $preferences.maxAutoScheduledBlocksPerDay, in: 1...8)
+
+                Text("Uses the primary daytime window for steady routines, errands, and grocery pickup before adding extra blocks.")
+                    .font(.footnote)
+                    .foregroundStyle(GentleTheme.mutedInk)
+            }
+            .gentleCardStyle()
+
+            VStack(alignment: .leading, spacing: 14) {
                 Text("Planning defaults")
                     .font(.headline)
                     .foregroundStyle(GentleTheme.ink)
                 Stepper("Default task duration: \(preferences.defaultTaskDuration) min", value: $preferences.defaultTaskDuration, in: 5...120, step: 5)
                 Stepper("Buffer between tasks: \(preferences.bufferMinutes) min", value: $preferences.bufferMinutes, in: 0...60, step: 5)
+                Stepper("Steady routine duration: \(preferences.steadyRoutineDurationMinutes) min", value: $preferences.steadyRoutineDurationMinutes, in: 10...120, step: 5)
+                Stepper("Steady routine buffer: \(preferences.steadyRoutineBufferMinutes) min", value: $preferences.steadyRoutineBufferMinutes, in: 0...60, step: 5)
+                Toggle("Offer grocery pickup", isOn: $preferences.lowEffortErrandEnabled)
+                Stepper("Pickup duration: \(preferences.groceryPickupDurationMinutes) min", value: $preferences.groceryPickupDurationMinutes, in: 10...60, step: 5)
             }
             .gentleCardStyle()
 

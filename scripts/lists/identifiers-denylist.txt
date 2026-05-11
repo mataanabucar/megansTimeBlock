@@ -1,0 +1,12 @@
+# Source identifier deny-list from privacy-and-sensitive-context-rules.md section 3.
+# One PCRE2 regex per line; blank lines and comments are ignored by scripts/audit-identifiers.sh.
+\b(alcohol\w*|addict\w*|substance\w*|drug\w*|relapse\w*|craving\w*|sober\w*|sobriety\w*)\b
+\btrigger\w*\b
+\baa([_-]?(slot|meeting|service|routine|reminder|category|block|window|task|scheduler|schedule))?\b
+\bal[-_]?anon\w*\b
+\b(twelve[-_]?step\w*|12[-_]?step\w*|sponsor\w*|program[-_]?check[-_]?in\w*)\b
+\b(rehab\w*|post[-_]?rehab\w*|detox\w*|treatment\w*|clinical\w*|therapy\w*)\b
+\brecovery[-_]?(from|because|support|routine|activity|task|meeting|block|window)?\w*\b
+\bbecause[-_]?of\w*\b
+\b(wife[-_]?mode|spouse[-_]?mode|partner[-_]?recovery\w*)\b
+\b(ICD|DSM)[-_]?[0-9A-Z.]*\b

@@ -1,6 +1,6 @@
 import Foundation
 
-struct MockAIScheduleService: AIScheduleService {
+struct HeuristicScheduler: AIScheduleService {
     func generatePlan(
         tasks: [TaskItem],
         existingScheduleBlocks: [ScheduleBlock],
@@ -27,7 +27,12 @@ struct MockAIScheduleService: AIScheduleService {
         )
 
         let taskLimit = limit(for: planningStyle, range: scheduleRange)
-        let limitedTasks = Array(selection.tasks.prefix(taskLimit))
+        let policyTasks = SchedulingPolicy.applyDailyCaps(
+            to: selection.tasks,
+            preferences: preferences,
+            range: scheduleRange
+        )
+        let limitedTasks = Array(policyTasks.prefix(taskLimit))
         let planned = makeBlocks(
             from: limitedTasks,
             preferences: preferences,
@@ -61,6 +66,13 @@ struct MockAIScheduleService: AIScheduleService {
             warnings.append(AIPlanWarning(
                 message: "Minimum Day is capped at three useful tasks.",
                 suggestion: "That is the point: small and recoverable."
+            ))
+        }
+
+        if preferences.protectedPlanningEnabled && scheduleRange != .thisWeek && selection.tasks.count > limitedTasks.count {
+            warnings.append(AIPlanWarning(
+                message: "I kept the plan small and left quiet space in the day.",
+                suggestion: "Extra items stayed in the inbox."
             ))
         }
 
@@ -271,6 +283,14 @@ struct MockAIScheduleService: AIScheduleService {
         case .soft: value += 5
         }
 
+        if SchedulingPolicy.isSteadyRoutine(task) {
+            value += 45
+        } else if SchedulingPolicy.isGroceryTask(task) {
+            value += 25
+        } else if SchedulingPolicy.isErrandLike(task) {
+            value += 15
+        }
+
         if let dueDate = task.dueDate {
             let daysAway = Calendar.current.dateComponents([.day], from: Date(), to: dueDate).day ?? 0
             if daysAway <= 0 { value += 35 }
@@ -327,6 +347,7 @@ struct MockAIScheduleService: AIScheduleService {
         let baseDay = calendar.startOfDay(for: DateFormatting.startDate(for: range))
         let dayCount = range == .thisWeek ? 7 : 1
         var cursorsByWindow: [String: Date] = [:]
+        var plannedMinutesByDay: [String: Int] = [:]
         var blocks: [AIPlannedBlock] = []
 
         for task in tasks {
@@ -368,6 +389,16 @@ struct MockAIScheduleService: AIScheduleService {
                 if let deadline = effectiveDeadline(for: context, on: day, calendar: calendar),
                    let proposedStart = calendar.date(byAdding: .minute, value: -duration, to: deadline),
                    proposedStart >= window.start, deadline <= window.end {
+                    guard canUseCapacity(
+                        duration: duration,
+                        on: day,
+                        plannedMinutesByDay: plannedMinutesByDay,
+                        preferences: preferences,
+                        calendar: calendar
+                    ) else {
+                        debugLog(task: task, context: context, decision: "skipped (daily capacity reserved)", duration: duration, window: window, finalStart: nil, finalEnd: nil)
+                        continue
+                    }
                     let block = makeBlock(
                         task: task,
                         context: context,
@@ -381,7 +412,14 @@ struct MockAIScheduleService: AIScheduleService {
                         deadlineDriven: true
                     )
                     blocks.append(block)
-                    bumpCursor(in: &cursorsByWindow, key: cursorKey(for: window, on: day, calendar: calendar), to: deadline, buffer: preferences.bufferMinutes, calendar: calendar)
+                    addCapacity(
+                        duration: duration,
+                        on: day,
+                        plannedMinutesByDay: &plannedMinutesByDay,
+                        preferences: preferences,
+                        calendar: calendar
+                    )
+                    bumpCursor(in: &cursorsByWindow, key: cursorKey(for: window, on: day, calendar: calendar), to: deadline, buffer: bufferMinutes(for: task, preferences: preferences), calendar: calendar)
                     debugLog(task: task, context: context, decision: "deadline-driven", duration: duration, window: window, finalStart: proposedStart, finalEnd: deadline)
                     break
                 }
@@ -394,6 +432,17 @@ struct MockAIScheduleService: AIScheduleService {
 
                 guard end <= window.end else {
                     debugLog(task: task, context: context, decision: "did not fit window", duration: duration, window: window, finalStart: start, finalEnd: end)
+                    continue
+                }
+
+                guard canUseCapacity(
+                    duration: duration,
+                    on: day,
+                    plannedMinutesByDay: plannedMinutesByDay,
+                    preferences: preferences,
+                    calendar: calendar
+                ) else {
+                    debugLog(task: task, context: context, decision: "skipped (daily capacity reserved)", duration: duration, window: window, finalStart: nil, finalEnd: nil)
                     continue
                 }
 
@@ -410,7 +459,14 @@ struct MockAIScheduleService: AIScheduleService {
                     deadlineDriven: false
                 )
                 blocks.append(block)
-                bumpCursor(in: &cursorsByWindow, key: cursorKey, to: end, buffer: preferences.bufferMinutes, calendar: calendar)
+                addCapacity(
+                    duration: duration,
+                    on: day,
+                    plannedMinutesByDay: &plannedMinutesByDay,
+                    preferences: preferences,
+                    calendar: calendar
+                )
+                bumpCursor(in: &cursorsByWindow, key: cursorKey, to: end, buffer: bufferMinutes(for: task, preferences: preferences), calendar: calendar)
                 debugLog(task: task, context: context, decision: "placed", duration: duration, window: window, finalStart: start, finalEnd: end)
                 break
             }
@@ -454,6 +510,45 @@ struct MockAIScheduleService: AIScheduleService {
         cursors[key] = calendar.date(byAdding: .minute, value: buffer, to: end) ?? end
     }
 
+    private func bufferMinutes(for task: TaskItem, preferences: UserPlanningPreferences) -> Int {
+        preferences.protectedPlanningEnabled && SchedulingPolicy.isSteadyRoutine(task)
+            ? preferences.steadyRoutineBufferMinutes
+            : preferences.bufferMinutes
+    }
+
+    private func canUseCapacity(
+        duration: Int,
+        on day: Date,
+        plannedMinutesByDay: [String: Int],
+        preferences: UserPlanningPreferences,
+        calendar: Calendar
+    ) -> Bool {
+        guard preferences.protectedPlanningEnabled else { return true }
+        let key = dayKey(for: day, calendar: calendar)
+        let used = plannedMinutesByDay[key] ?? 0
+        let buffer = used == 0 ? 0 : preferences.bufferMinutes
+        return used + duration + buffer <= SchedulingPolicy.dailyPlanningCapacity(on: day, preferences: preferences)
+    }
+
+    private func addCapacity(
+        duration: Int,
+        on day: Date,
+        plannedMinutesByDay: inout [String: Int],
+        preferences: UserPlanningPreferences,
+        calendar: Calendar
+    ) {
+        guard preferences.protectedPlanningEnabled else { return }
+        let key = dayKey(for: day, calendar: calendar)
+        let used = plannedMinutesByDay[key] ?? 0
+        let buffer = used == 0 ? 0 : preferences.bufferMinutes
+        plannedMinutesByDay[key] = used + duration + buffer
+    }
+
+    private func dayKey(for day: Date, calendar: Calendar) -> String {
+        let components = calendar.dateComponents([.year, .month, .day], from: day)
+        return "\(components.year ?? 0)-\(components.month ?? 0)-\(components.day ?? 0)"
+    }
+
     /// Effective deadline: if the parser found one, project it onto `day`.
     private func effectiveDeadline(for context: TaskTimeContext, on day: Date, calendar: Calendar) -> Date? {
         guard let deadline = context.deadlineTime else { return nil }
@@ -494,6 +589,15 @@ struct MockAIScheduleService: AIScheduleService {
         style: PlanningStyle,
         preferences: UserPlanningPreferences
     ) -> Int {
+        if preferences.protectedPlanningEnabled && SchedulingPolicy.isSteadyRoutine(task) {
+            return preferences.steadyRoutineDurationMinutes
+        }
+        if preferences.protectedPlanningEnabled
+            && preferences.lowEffortErrandEnabled
+            && SchedulingPolicy.isGroceryTask(task) {
+            return preferences.groceryPickupDurationMinutes
+        }
+
         let stored = task.estimatedMinutes
         // The TaskItem may have been saved with the user's 60-min default by
         // older code paths. If a band exists and the stored value looks like
@@ -563,6 +667,18 @@ struct MockAIScheduleService: AIScheduleService {
         preferences: UserPlanningPreferences,
         calendar: Calendar
     ) -> SchedulingWindow {
+        if preferences.protectedPlanningEnabled {
+            if SchedulingPolicy.isSteadyRoutine(task) {
+                let window = SchedulingPolicy.steadyRoutineWindow(on: day, preferences: preferences, calendar: calendar)
+                return SchedulingWindow(label: "Daytime", start: window.start, end: window.end)
+            }
+
+            if SchedulingPolicy.isErrandLike(task) && !SchedulingPolicy.isExplicitEvening(context.flexibleWindowLabel) {
+                let window = SchedulingPolicy.errandWindow(on: day, preferences: preferences, calendar: calendar)
+                return SchedulingWindow(label: "Afternoon", start: window.start, end: window.end)
+            }
+        }
+
         let label = context.flexibleWindowLabel ?? businessWindowLabel(for: task, context: context)
         let defaultStart = DateFormatting.combine(day: day, time: preferences.defaultWindowStart)
         let defaultEnd = DateFormatting.combine(day: day, time: preferences.defaultWindowEnd)
@@ -696,6 +812,15 @@ struct MockAIScheduleService: AIScheduleService {
         if deadlineDriven {
             return "I scheduled this to finish by your deadline."
         }
+        if SchedulingPolicy.isSteadyRoutine(task) {
+            return "I put this in the primary daytime window."
+        }
+        if SchedulingPolicy.isGroceryTask(task) {
+            return "Pickup option: shorter block."
+        }
+        if SchedulingPolicy.isErrandLike(task) {
+            return "I put this in a daytime errand window."
+        }
         if let capReason = context.windowEndCapReason {
             return "I matched the timing hint and \(capReason)."
         }
@@ -797,16 +922,15 @@ struct MockAIScheduleService: AIScheduleService {
     ) {
         #if DEBUG
         let timeFormatter = DateFormatting.shortTime
-        let startStr = finalStart.map(timeFormatter.string(from:)) ?? "—"
-        let endStr = finalEnd.map(timeFormatter.string(from:)) ?? "—"
-        let bandStr = context.durationBand.map { "\($0.lower)–\($0.upper)" } ?? "—"
-        let deadlineStr = context.deadlineTime.map(timeFormatter.string(from:)) ?? "—"
-        let capStr = context.windowEndCap.map { c in "\(c.hour ?? 0):\(String(format: "%02d", c.minute ?? 0))" } ?? "—"
+        let startStr = finalStart.map(timeFormatter.string(from:)) ?? "-"
+        let endStr = finalEnd.map(timeFormatter.string(from:)) ?? "-"
+        let bandStr = context.durationBand.map { "\($0.lower)-\($0.upper)" } ?? "-"
+        let deadlineStr = context.deadlineTime.map(timeFormatter.string(from:)) ?? "-"
+        let capStr = context.windowEndCap.map { c in "\(c.hour ?? 0):\(String(format: "%02d", c.minute ?? 0))" } ?? "-"
         print("""
         GentlePlan assignment:
-          task=\"\(task.title)\"
           decision=\(decision)
-          window=\(window.label) [\(timeFormatter.string(from: window.start))–\(timeFormatter.string(from: window.end))]
+          window=\(window.label) [\(timeFormatter.string(from: window.start))-\(timeFormatter.string(from: window.end))]
           duration=\(duration) min (band \(bandStr))
           deadline=\(deadlineStr)
           endCap=\(capStr)\(context.windowEndCapReason.map { " (\($0))" } ?? "")

@@ -530,6 +530,7 @@ struct GentleTaskCard: View {
 
     static func icon(for category: TaskCategory) -> String {
         switch category {
+        case .steadyRoutine: "repeat"
         case .home: "house.fill"
         case .errand: "bag.fill"
         case .family: "person.2.fill"

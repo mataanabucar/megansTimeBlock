@@ -22,7 +22,7 @@ struct TaskEditView: View {
 
             Section("Details") {
                 Picker("Category", selection: categoryBinding) {
-                    ForEach(TaskCategory.allCases) { category in
+                    ForEach(categoryOptions) { category in
                         Text(category.title).tag(category)
                     }
                 }
@@ -102,6 +102,12 @@ struct TaskEditView: View {
             get: { task.category },
             set: { task.category = $0 }
         )
+    }
+
+    private var categoryOptions: [TaskCategory] {
+        TaskCategory.userSelectableCases.contains(task.category)
+            ? TaskCategory.userSelectableCases
+            : [task.category] + TaskCategory.userSelectableCases
     }
 
     private var priorityBinding: Binding<PriorityLevel> {

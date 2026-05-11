@@ -277,7 +277,7 @@ private struct PreviewReviewCallout: View {
 
 #Preview("AI Preview — variety") {
     AIParsePreviewView(
-        originalText: "Take out trash tomorrow evening, give Scarlett a bath in the afternoon, go grocery shopping, spend personal time at the park in the early evening, and have dinner ready by six.",
+        originalText: "Take out trash tomorrow evening, give child a bath in the afternoon, go grocery shopping, spend personal time at the park in the early evening, and have dinner ready by six.",
         response: AITaskParseResponse(
             tasks: [
                 AITaskCandidate(

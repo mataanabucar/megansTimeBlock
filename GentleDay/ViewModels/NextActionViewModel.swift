@@ -69,6 +69,7 @@ final class NextActionViewModel {
         else if task.estimatedMinutes <= 15 { value += 25 }
         if task.energyLevel == .low || task.energyLevel == .any { value += 10 }
         if !task.suggestedTinyStep.isEmpty { value += 15 }
+        if SchedulingPolicy.isSteadyRoutine(task) { value += 20 }
         if let dueDate = task.dueDate {
             if Calendar.current.isDateInToday(dueDate) { value += 30 }
             else if dueDate < Date() { value += 20 }
@@ -80,7 +81,10 @@ final class NextActionViewModel {
 
     private func reason(for task: TaskItem) -> String {
         if task.estimatedMinutes <= 5 {
-            return "It only takes about 5 minutes, and starting is the win."
+            return "It only takes about 5 minutes."
+        }
+        if SchedulingPolicy.isSteadyRoutine(task) {
+            return "It keeps the day steady."
         }
         if task.title.lowercased().contains("laundry") {
             return "It can run while you do something else."

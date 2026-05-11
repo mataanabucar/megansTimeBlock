@@ -271,8 +271,10 @@ struct BuildPlanView: View {
         guard let pref = preferences.first else { return 0 }
         let cal = Calendar.current
 
-        let startMinuteOfDay = minutesIntoDay(pref.defaultWindowStart, calendar: cal)
-        let endMinuteOfDay = minutesIntoDay(pref.defaultWindowEnd, calendar: cal)
+        let start = pref.protectedPlanningEnabled ? pref.primaryDayWindowStart : pref.defaultWindowStart
+        let end = pref.protectedPlanningEnabled ? pref.primaryDayWindowEnd : pref.defaultWindowEnd
+        let startMinuteOfDay = minutesIntoDay(start, calendar: cal)
+        let endMinuteOfDay = minutesIntoDay(end, calendar: cal)
         let dailyWindow = max(0, endMinuteOfDay - startMinuteOfDay)
 
         switch viewModel.selectedRange {

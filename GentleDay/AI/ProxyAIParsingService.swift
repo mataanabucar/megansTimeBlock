@@ -38,7 +38,6 @@ struct ProxyAIParsingService: AIParsingService {
 
     func parseTaskCapture(rawText: String, context: AIParsingContext) async throws -> AITaskParseResponse {
         let endpointURL = try endpointURL()
-        print("Gentle Day AI proxy request endpoint: \(AIProxyConfiguration.sanitizedEndpointDescription(endpointURL))")
 
         var request = URLRequest(url: endpointURL)
         request.httpMethod = "POST"
@@ -100,7 +99,6 @@ struct ProxyAIParsingService: AIParsingService {
             guard response.tasks.allSatisfy({ $0.title.nilIfBlank != nil && $0.durationMinutes > 0 }) else {
                 throw ProxyAIParsingServiceError.missingRequiredParsedTaskFields
             }
-            print("Gentle Day AI decoded task count: \(response.tasks.count)")
             return response
         } catch let error as ProxyAIParsingServiceError {
             throw error
@@ -132,12 +130,7 @@ struct ProxyAIParsingService: AIParsingService {
 
     private func logRawResponseBody(_ data: Data) {
         guard DEBUG_AI_PROXY else { return }
-
-        if let body = String(data: data, encoding: .utf8) {
-            print("Gentle Day AI proxy raw response body:\n\(body)")
-        } else {
-            print("Gentle Day AI proxy raw response body: <non-UTF-8 response, \(data.count) bytes>")
-        }
+        print("Gentle Day AI proxy response bytes: \(data.count)")
     }
 }
 
@@ -214,7 +207,6 @@ private struct ProxyTaskParseEnvelope: Decodable {
         )
 
         if candidates.count <= 1, fallbackCandidates.count > candidates.count {
-            print("Gentle Day AI fallback split task count: \(fallbackCandidates.count)")
             return AITaskParseResponse(
                 tasks: fallbackCandidates,
                 warnings: warnings.map(\.warning),
@@ -476,7 +468,7 @@ private struct ProxyParsedTask: Decodable {
             durationLowerMinutes: band?.lower,
             durationUpperMinutes: band?.upper,
             priority: priority ?? .normal,
-            category: category ?? .other,
+            category: Self.inferredCategory(from: resolvedRawText),
             reminderPreference: reminderPreference ?? context.userPreferences.defaultReminderStyle,
             recurrence: recurrence ?? parsed.recurrenceHint,
             confidence: min(max(confidence ?? 0.72, 0), 1),
@@ -917,8 +909,11 @@ private enum ProxyLegacyTaskSplitter {
 
     private static func inferredCategory(from text: String) -> TaskCategory {
         let lowered = text.lowercased()
-        if lowered.contains("scarlett") || lowered.contains("kid") || lowered.contains("school") {
+        if lowered.contains("kid") || lowered.contains("child") || lowered.contains("school") {
             return .family
+        }
+        if lowered.contains("meeting") || lowered.contains("daily routine") || lowered.contains("journal") {
+            return .steadyRoutine
         }
         if lowered.contains("dish") || lowered.contains("laundry") || lowered.contains("clean") {
             return .cleaning
@@ -1028,7 +1023,7 @@ private enum FlexibleProxyDateParser {
     ]
 }
 
-private extension JSONEncoder {
+extension JSONEncoder {
     static var gentleAI: JSONEncoder {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601

@@ -7,22 +7,6 @@ struct MockAIParsingService: AIParsingService {
             candidate(from: item, context: context)
         }
 
-        #if DEBUG
-        for c in candidates {
-            print("""
-            GentleParse mock:
-              raw=\"\(c.rawText)\"
-              title=\"\(c.title)\"
-              window=\(c.flexibleWindow ?? "nil")
-              dueDate=\(c.dueDate?.description ?? "nil")
-              durationBand=\(c.durationLowerMinutes.map(String.init) ?? "?")–\(c.durationUpperMinutes.map(String.init) ?? "?") (using \(c.durationMinutes))
-              category=\(c.category.rawValue)
-              confidence=\(String(format: "%.2f", c.confidence))
-              clarification=\(c.clarificationNeeded)
-            """)
-        }
-        #endif
-
         return AITaskParseResponse(
             tasks: candidates,
             warnings: candidates
@@ -77,7 +61,7 @@ struct MockAIParsingService: AIParsingService {
         return [text.trimmingCharacters(in: .whitespacesAndNewlines)].filter { !$0.isEmpty }
     }
 
-    /// Split "take out trash tomorrow evening give Scarlett a bath in the
+    /// Split "take out trash tomorrow evening give child a bath in the
     /// afternoon go grocery shopping" into separate items by detecting where
     /// a new action verb begins after at least one prior word of context.
     private func splitByMidSentenceActionVerbs(_ chunk: String) -> [String] {
@@ -244,6 +228,10 @@ struct MockAIParsingService: AIParsingService {
         if lowered.contains("dinner") || lowered.contains("breakfast") || lowered.contains("lunch")
             || lowered.contains("meal") || lowered.contains("cook") {
             return .meals
+        }
+        if lowered.contains("meeting") || lowered.contains("daily routine") || lowered.contains("journal")
+            || lowered.contains("meditation") {
+            return .steadyRoutine
         }
         if lowered.contains("kitchen") || lowered.contains("dish") || lowered.contains("laundry")
             || lowered.contains("vacuum") || lowered.contains("sweep") || lowered.contains("clean")

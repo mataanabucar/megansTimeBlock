@@ -1,0 +1,14 @@
+# User-visible string deny-list from recovery-sensitive copy/privacy guidance.
+# One PCRE2 regex per line; blank lines and comments are ignored by scripts/audit-strings.sh.
+\b(recovery|sobriety|sober|sober days|relapse|craving|symptom|sponsor|rehab|detox|treatment|clinical)\b
+\btrigger\b
+\bprogram\b
+\b(check[ -]?in|your journey|your recovery|al[- ]?anon|12[- ]?step|twelve[- ]?step)\b
+(^|[^[:alnum:]_])AA([^[:alnum:]_]|$)
+\b(streak|in a row|days strong|don'?t break the chain|score|rating|completion rate|productivity|efficiency|points|XP|level|badge|achievement|unlocked|goal achieved|crushed it|beast mode|win the day|win the morning|no excuses|let'?s go|you got this|keep grinding|hustle|level up)\b
+\b(failed|failure|missed|behind|falling behind|catching up|make up|lazy|should have|you didn'?t|you forgot|again|try harder|do better|last chance|one more time)\b
+\b(are you okay|how are you feeling|mood|feelings|emotional check[- ]?in|support resources|hotline|help line|crisis|emergency|urgent[ -]+call|talk to someone|reach out to your support network)\b
+\b(i notice you|it sounds like|let'?s explore|let'?s sit with that|what'?s coming up for you|that must be hard|take a breath|be kind to yourself|one day at a time|progress, not perfection|trust the process|your future self will thank you)\b
+\b(you'?re crushing it|great job|amazing|you'?re on fire|way to go|keep it up)\b
+\b(don'?t forget|important[ -]+don'?t skip|hurry|only [0-9]+ minutes left|now or never|time-sensitive|critical|must do today)\b
+\b(partner|spouse|husband|wife|family member|loved one)\b
